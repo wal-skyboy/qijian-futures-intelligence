@@ -1,0 +1,29 @@
+services:
+  web:
+    build: .
+    env_file: .env
+    ports: ["3000:3000"]
+    depends_on: [api]
+  api:
+    build: ./backend
+    env_file: .env
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    environment: {POSTGRES_DB: qijian, POSTGRES_USER: qijian, POSTGRES_PASSWORD: qijian}
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U qijian"], interval: 5s, timeout: 3s, retries: 10}
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes: ["redis_data:/data"]
+    healthcheck: {test: ["CMD", "redis-cli", "ping"], interval: 5s, timeout: 3s, retries: 10}
+  nginx:
+    image: nginx:1.27-alpine
+    ports: ["80:80", "443:443"]
+    volumes: ["./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro", "./deploy/certs:/etc/nginx/certs:ro"]
+    depends_on: [web, api]
+volumes: {postgres_data: {}, redis_data: {}}

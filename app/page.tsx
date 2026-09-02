@@ -1,0 +1,44 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+
+type Asset = '黄金' | '白银' | '锡';
+type Event = { id:number; asset:Asset; side:'利多'|'利空'; title:string; summary:string; source:string; time:string; impact:number; confidence:number; tags:string[] };
+
+const assets: Record<Asset, {symbol:string; price:string; change:string; score:number; tone:string}> = {
+  黄金:{symbol:'GC / AU',price:'2,654.80',change:'+1.28%',score:72,tone:'偏多'},
+  白银:{symbol:'SI / AG',price:'31.642',change:'+0.86%',score:64,tone:'震荡偏多'},
+  锡:{symbol:'SN / LME',price:'256,780',change:'-0.42%',score:43,tone:'中性偏空'},
+};
+const events: Event[] = [
+ {id:1,asset:'黄金',side:'利多',title:'美债实际收益率回落，避险资金回流黄金',summary:'美元与实际利率同步走弱，黄金资金流出现连续净流入。若非农预期进一步下修，金价上行动能或延续。',source:'Reuters',time:'09:42',impact:92,confidence:88,tags:['宏观','资金流','跨源验证']},
+ {id:2,asset:'黄金',side:'利空',title:'高位获利了结增多，期权波动率抬升',summary:'短周期持仓拥挤度进入警戒区，2,670附近或面临技术性抛压。',source:'CME Group',time:'08:55',impact:68,confidence:76,tags:['技术面','期权']},
+ {id:3,asset:'白银',side:'利多',title:'光伏需求预期改善，现货升水扩大',summary:'工业需求边际转强叠加贵金属共振，白银弹性高于黄金，但波动风险也同步放大。',source:'Silver Institute',time:'10:06',impact:84,confidence:81,tags:['产业链','现货']},
+ {id:4,asset:'白银',side:'利空',title:'交易所库存周度回升',summary:'可交割库存止降回升，短期缓解供应偏紧预期，限制价格追涨空间。',source:'COMEX',time:'07:48',impact:61,confidence:83,tags:['库存','供需']},
+ {id:5,asset:'锡',side:'利多',title:'主要产区供应扰动预期升温',summary:'矿端审批与雨季运输扰动可能造成阶段性缺口，冶炼端加工费仍处低位。',source:'SMM',time:'09:18',impact:79,confidence:72,tags:['供应','矿端']},
+ {id:6,asset:'锡',side:'利空',title:'下游电子订单恢复仍偏慢',summary:'焊料企业采购维持刚需，终端补库持续性尚需验证。',source:'LME',time:'08:21',impact:70,confidence:78,tags:['需求','库存']},
+];
+const strategy: Record<Asset,string[]> = {
+ 黄金:['回踩 2,638–2,645 分批试多','持有多单，2,632 下方止损','数据日前减仓 30%','突破 2,672 再顺势跟进','逢高锁定部分利润','周末风险敞口降至 50%','复盘资金流与下周事件'],
+ 白银:['31.20 附近轻仓试多','站稳 31.70 后加仓','关注金银比回落信号','波动扩大时上移止损','32.30 附近分批止盈','避免隔夜重仓','等待库存验证后决策'],
+ 锡:['观望，关注 254,000 支撑','支撑确认后小仓试多','若跌破支撑转为防守','关注产区供应消息','突破 260,000 再加仓','高位减仓控制回撤','等待下游订单数据'],
+};
+const days=['周一','周二','周三','周四','周五','周六','周日'];
+
+export default function Home(){
+ const [asset,setAsset]=useState<Asset>('黄金'); const [query,setQuery]=useState(''); const [dark,setDark]=useState(true);
+ const [refresh,setRefresh]=useState(60); const [updated,setUpdated]=useState('刚刚'); const [toast,setToast]=useState(''); const [mobileNav,setMobileNav]=useState(false);
+ const filtered=useMemo(()=>events.filter(e=>e.asset===asset && (!query||e.title.includes(query)||e.summary.includes(query)||e.tags.some(t=>t.includes(query)))),[asset,query]);
+ const doRefresh=()=>{setUpdated('刚刚');setToast('已完成刷新 · 未发现重复资讯');setTimeout(()=>setToast(''),2500)};
+ useEffect(()=>{if(!refresh)return; const id=setInterval(doRefresh,refresh*1000);return()=>clearInterval(id)},[refresh]);
+ return <div className={dark?'app dark':'app'}>
+  <header className="topbar"><button className="mobile-menu" onClick={()=>setMobileNav(!mobileNav)} aria-label="打开导航">☰</button><div className="brand"><span className="brand-mark">◆</span><div><b>期鉴</b><small>FUTURES INTELLIGENCE</small></div></div><label className="search"><span>⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="搜索品种、事件或关键词…"/><kbd>⌘ K</kbd></label><div className="top-actions"><span className="live"><i/>实时</span><button onClick={()=>setDark(!dark)} aria-label="切换主题">{dark?'☼':'◐'}</button><button className="avatar">Q</button></div></header>
+  <aside className={mobileNav?'sidebar open':'sidebar'}><nav><span className="nav-label">工作台</span><a className="active">▦<b>市场总览</b></a><a>⌁<b>资讯雷达</b><em>12</em></a><a>⌇<b>变化追踪</b><em className="orange">5</em></a><a>▥<b>策略日历</b></a><span className="nav-label">重点品种</span>{(Object.keys(assets) as Asset[]).map((x,i)=><button key={x} className={asset===x?'asset active':'asset'} onClick={()=>{setAsset(x);setMobileNav(false)}}><span className={`dot d${i}`}/><b>{x}</b><small>{assets[x].symbol}</small></button>)}<span className="nav-label">工具</span><a>⌗<b>风险中心</b></a><a>⚙<b>数据与设置</b></a></nav><div className="system"><div><span>系统状态</span><b>全部正常</b></div><p><i/><span>数据延迟</span><b>1.2s</b></p><p><i/><span>来源在线</span><b>8 / 8</b></p></div></aside>
+  <main><section className="headline"><div><p className="eyebrow">市场情报中心 <span>上海时间 10:28</span></p><h1>{asset} <small>{assets[asset].symbol}</small></h1><p>聚合全球重要动态，结合宏观、技术与资金面生成可解释研判</p></div><div className="refresh"><span>更新于 {updated}</span><select value={refresh} onChange={e=>setRefresh(+e.target.value)} aria-label="自动刷新间隔"><option value="10">每 10 秒</option><option value="20">每 20 秒</option><option value="30">每 30 秒</option><option value="60">每 1 分钟</option><option value="180">每 3 分钟</option><option value="300">每 5 分钟</option><option value="600">每 10 分钟</option><option value="900">每 15 分钟</option><option value="1800">每 30 分钟</option><option value="3600">每 60 分钟</option></select><button onClick={doRefresh}>↻ 立即刷新</button></div></section>
+   <section className="metrics"><div className="price-card"><span>主力参考价</span><div><strong>{assets[asset].price}</strong><b>{assets[asset].change}</b></div><small>日内高 2,661.30　低 2,621.80</small><div className="spark"><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/></div></div><div><span>多空强度</span><strong className="amber">{assets[asset].score}</strong><b>/ 100 · {assets[asset].tone}</b><div className="bar"><i style={{width:`${assets[asset].score}%`}}/></div><small>较昨日 <em>↑ 6</em></small></div><div><span>关键事件</span><strong>{filtered.length||2}</strong><b>条高价值动态</b><small><em>▲ 2 利多</em>　<span className="bear">▼ 1 利空</span></small></div><div><span>研判置信度</span><strong>84%</strong><b>跨来源验证</b><small>6 个来源 · 一致性高</small></div></section>
+   <div className="content-grid"><section className="panel intel"><div className="panel-head"><div><h2>今日情报雷达</h2><p>已去重并按影响力排序</p></div><div className="legend"><span><i className="bull"/>利多</span><span><i className="bear-dot"/>利空</span></div></div><div className="side-columns">{(['利多','利空'] as const).map(side=><div key={side}><h3 className={side==='利多'?'bull-text':'bear'}>{side==='利多'?'▲ 利多驱动':'▼ 利空压力'} <span>{filtered.filter(e=>e.side===side).length}</span></h3>{filtered.filter(e=>e.side===side).map(e=><article className="event" key={e.id}><div className="event-meta"><span>{e.time}</span><b>{e.source}</b><em>影响 {e.impact}</em></div><h4>{e.title}</h4><p>{e.summary}</p><div className="tags">{e.tags.map(t=><span key={t}>{t}</span>)}</div><footer><span>置信度 <b>{e.confidence}%</b></span><a href="https://www.reuters.com/markets/commodities/" target="_blank" rel="noreferrer">查看来源 ↗</a></footer></article>)}</div>)}</div></section>
+    <aside className="right-stack"><section className="panel pulse"><div className="panel-head"><div><h2>市场脉搏</h2><p>近 12 小时观点变化</p></div><span className="trend">+12%</span></div><div className="chart"><div className="gridlines"/><div className="area-shape"/><div className="line-shape"/><span className="marker m1">宏观</span><span className="marker m2">库存</span></div><div className="chart-axis"><span>22:00</span><span>02:00</span><span>06:00</span><span>10:00</span></div></section><section className="panel changes"><div className="panel-head"><div><h2>最新变化</h2><p>相较上次刷新</p></div><button>查看全部</button></div><ul><li><i className="new">新</i><div><b>新增宏观事件</b><p>降息预期概率上调 4%</p><small>2 分钟前</small></div></li><li><i className="up">↗</i><div><b>观点由中性转为利多</b><p>资金流信号确认</p><small>18 分钟前</small></div></li><li><i className="adjust">调</i><div><b>策略区间调整</b><p>止损位上移至 2,632</p><small>36 分钟前</small></div></li></ul></section></aside></div>
+   <section className="panel week"><div className="panel-head"><div><h2>未来 7 日策略路径</h2><p>基于当前市场状态动态更新 · 仅供研究参考</p></div><div className="risk-badge">风险预算 <b>中等</b></div></div><div className="week-grid">{days.map((d,i)=><article key={d} className={i===0?'today':''}><span>{d}</span><b>{i===0?'今日':`9/${4+i}`}</b><i className={i<2?'bull':i<5?'neutral':'quiet'}/><p>{strategy[asset][i]}</p><small>{i===2?'⚡ 重要数据':'仓位 ≤ '+(i<4?'40%':'25%')}</small></article>)}</div></section><footer className="disclaimer"><span>数据来源：Reuters、CME、LME、SMM 等公开渠道 · Demo provider</span><b>风险提示：本平台内容不构成投资建议</b></footer>
+  </main>{toast&&<div className="toast">✓ {toast}</div>}
+ </div>
+}
