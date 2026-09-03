@@ -3,5 +3,5 @@
   "buildCommand": "npm run build",
   "installCommand": "npm install",
   "outputDirectory": "dist/client",
-  "nodeVersion": "22.11.0"
+  "nodeVersion": "22.17.1"
 }
