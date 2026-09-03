@@ -9,6 +9,11 @@ const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
 
 const { d1, r2 } = hostingConfig;
 
+// EdgeOne Pages consumes the static client output directly. The OpenAI Sites
+// lifecycle plugin is only needed by the Sites runtime and expects Next.js
+// server metadata that is intentionally not produced by a static export.
+const isEdgeOneBuild = process.env.EDGEONE_BUILD === '1';
+
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === 'seatbelt';
 
@@ -51,7 +56,7 @@ export default defineConfig(async () => {
       : undefined,
     plugins: [
       vinext(),
-      sites(),
+      ...(isEdgeOneBuild ? [] : [sites()]),
       cloudflare({
         viteEnvironment: { name: 'rsc', childEnvironments: ['ssr'] },
         config: localBindingConfig,

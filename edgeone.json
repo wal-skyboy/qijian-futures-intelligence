@@ -1,6 +1,6 @@
 {
   "name": "qijian-futures-intelligence",
-  "buildCommand": "npm run build",
+  "buildCommand": "EDGEONE_BUILD=1 npm run build",
   "installCommand": "npm install",
   "outputDirectory": "dist/client",
   "nodeVersion": "22.17.1"
