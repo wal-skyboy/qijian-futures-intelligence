@@ -1,5 +1,6 @@
 # dependencies
 /node_modules
+/edgeone/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -33,6 +34,7 @@ yarn-error.log*
 .vercel
 next-env.d.ts
 /dist/
+/edgeone/build/
 /.wrangler/
 /outputs/
 /work/

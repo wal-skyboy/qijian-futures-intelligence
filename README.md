@@ -37,6 +37,12 @@ GDELT 不需 Key；CFTC 公共 PRE 低频访问通常不需 Token；FRED 需要�
 3. 设置强随机数据库密码、限定 CORS 域名、以 secrets 注入 API 密钥，不提交 `.env`。
 4. 启动后检查 `/health`，并为 API 错误率、数据延迟、Provider 失败、刷新耗时和磁盘备份配置告警。
 
+### EdgeOne Pages 静态部署
+
+仓库内的 `edgeone/` 是专为 EdgeOne Pages 准备的纯 React/Vite 静态入口。这样可以避免平台把包含 Vinext/Next 开发文件的根目录误判为 OpenNext 全栈项目。
+
+在 EdgeOne 项目设置中将“根目录”设为 `/edgeone`，框架预设选“React”，编译命令为 `npm run build`，输出目录为 `build`，安装命令为 `npm install`，Node.js 选 `22.17.1`。保存后在“构建部署”中重新部署 `main` 分支。生产域名 `emcdb.com` 保持现有自定义域名和 CNAME，不需要重新配置 DNS。
+
 ## 已实现的质量优化
 
 本轮质量门展示 40 项检查：Provider 可替换、去重状态反馈、来源分级、事件影响评分、时效时间戳、置信度校准、观点版本化、增删/多空/策略 diff、宏观与技术面融合、成交量/OI、波动率与金银比、事件窗口、七日策略、仓位上限、止损、催化剂、风险清单、数据新鲜度、刷新去抖、缓存扩展点、移动端折叠、深色对比度、键盘焦点、错误恢复、API 健康检查、安全响应头、SEO、可观测性、提醒开关、时区明确、紧凑模式、来源健康、过期防护等。

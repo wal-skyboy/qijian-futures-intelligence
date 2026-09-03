@@ -1,0 +1,7 @@
+{
+  "name": "qijian-futures-intelligence-static",
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
+  "outputDirectory": "build",
+  "nodeVersion": "22.17.1"
+}
