@@ -76,17 +76,18 @@ class FreeNewsProvider:
     async def search(self, symbol: str, limit: int = 20) -> list[dict]:
         _, query, _ = ASSET_TERMS.get(symbol, (symbol, symbol, symbol))
         params = {"query": query, "mode": "artlist", "format": "json",
-                  "maxrecords": min(limit, 50), "sort": "HybridRel", "timespan": "24h"}
+                  "maxrecords": min(limit, 50), "sort": "datedesc", "timespan": "24h"}
         url = "https://api.gdeltproject.org/api/v2/doc/doc"
         try:
             async with httpx.AsyncClient(timeout=settings.http_timeout_seconds) as client:
                 response = await client.get(url, params=params)
                 response.raise_for_status()
                 payload = response.json()
-            return [{"title": item.get("title", ""), "url": item.get("url"),
+            items = [{"title": item.get("title", ""), "url": item.get("url"),
                      "source": item.get("domain", "unknown"), "seen_at": item.get("seendate"),
                      "provider": "gdelt", "license": "open_data"}
                     for item in payload.get("articles", []) if item.get("url")]
+            return sorted(items, key=lambda item: item.get("seen_at") or "", reverse=True)
         except (httpx.HTTPError, ValueError, TypeError):
             return []
 
