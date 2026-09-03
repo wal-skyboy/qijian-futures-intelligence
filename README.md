@@ -2,6 +2,8 @@
 
 中文专业交易终端风格的可部署 MVP。前端为 React/TypeScript，API 为 FastAPI；默认 Demo Provider 无需密钥即可展示黄金、白银、锡的资讯研判、变化追踪与七日策略。
 
+顶部品种搜索支持黄金、白银、锡、铜、原油、大豆、玉米和螺纹钢；切换品种后，行情、事件、利多/利空、日历、风险、策略和图片分析上下文会同步切换。未接入专属资讯流的品种会显示明确的通用模板与 Provider 待接入状态。
+
 ## 本地运行
 
 前端：`npm install && npm run dev`。API：进入 `backend`，安装 requirements 后运行 `uvicorn app.main:app --reload`。生产整套服务可复制 `.env.example` 为 `.env` 后运行 `docker compose up -d --build`。

@@ -26,6 +26,11 @@ class DemoProvider(MarketProvider):
         "gold": ("黄金", 2654.80, 1.28, 72),
         "silver": ("白银", 31.642, .86, 64),
         "tin": ("锡", 256780, -.42, 43),
+        "copper": ("铜", 9842.50, .34, 58),
+        "crude": ("原油", 78.420, -.67, 47),
+        "soybean": ("大豆", 1018.25, .22, 54),
+        "corn": ("玉米", 412.75, -.18, 49),
+        "rebar": ("螺纹钢", 3462, -.31, 45),
     }
     async def snapshot(self, symbol: str) -> dict:
         name, price, change, score = self.values.get(symbol, self.values["gold"])

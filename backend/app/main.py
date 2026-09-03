@@ -84,7 +84,8 @@ async def cot(contract: str): return await FreeCOTProvider().latest(contract)
 @app.get("/api/v1/search")
 async def search(q: str = Query(min_length=1, max_length=40)):
     all_assets = [{"symbol":"gold","name":"黄金"},{"symbol":"silver","name":"白银"},{"symbol":"tin","name":"锡"},
-                  {"symbol":"copper","name":"铜"},{"symbol":"crude","name":"原油"},{"symbol":"soybean","name":"大豆"}]
+                  {"symbol":"copper","name":"铜"},{"symbol":"crude","name":"原油"},{"symbol":"soybean","name":"大豆"},
+                  {"symbol":"corn","name":"玉米"},{"symbol":"rebar","name":"螺纹钢"}]
     query = q.lower()
     return [x for x in all_assets if query in x["symbol"] or q in x["name"]][:8]
 

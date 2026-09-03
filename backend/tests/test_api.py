@@ -8,6 +8,7 @@ def test_market_boundaries():
     assert 0 <= data['bull_bear_score'] <= 100 and data['delayed'] is True
 def test_search_limit_and_empty():
     assert client.get('/api/v1/search?q=金').status_code == 200
+    assert any(item['name'] == '铜' for item in client.get('/api/v1/search?q=铜').json())
     assert client.get('/api/v1/search?q=').status_code == 422
 def test_change_types():
     types = {x['type'] for x in client.get('/api/v1/changes/gold').json()['items']}
