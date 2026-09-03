@@ -1,0 +1,8 @@
+/* Keep the Tailwind import inside the EdgeOne project root so PostCSS can
+   resolve it from edgeone/node_modules in the hosted build. */
+@import 'tailwindcss';
+@import '../../app/enhancements.css';
+@import '../../app/round3.css';
+@import '../../app/free-data.css';
+@import '../../app/timestamps.css';
+@import '../../app/week-workbench.css';
