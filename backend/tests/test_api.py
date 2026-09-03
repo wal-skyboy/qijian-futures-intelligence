@@ -18,3 +18,10 @@ def test_global_market_and_strategy():
     assert {'gold','silver','tin'} <= {item['symbol'] for item in global_data['items']}
     plan = client.get('/api/v1/strategy/gold').json()
     assert plan['bias'] in {'偏多','偏空','中性'} and 0 <= plan['score'] <= 100
+def test_image_analysis_contract():
+    response = client.post('/api/v1/image-analysis', json={
+        'file_name':'chart.png','mime_type':'image/png','size_bytes':1024,
+        'width':1280,'height':720,'asset':'silver'})
+    data = response.json()
+    assert response.status_code == 200 and data['provider'] == 'demo_vision'
+    assert data['signals'] and 'silver' not in data['title'].lower()

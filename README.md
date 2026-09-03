@@ -18,9 +18,15 @@ NEWS_PROVIDER=gdelt
 ALPHAVANTAGE_API_KEY=
 FRED_API_KEY=
 CFTC_APP_TOKEN=
+VISION_PROVIDER=demo
+VISION_API_KEY=
 ```
 
 GDELT 不需 Key；CFTC 公共 PRE 低频访问通常不需 Token；FRED 需要免费账户 Key；Alpha Vantage 免费 Key 适合低频现货/历史查询。免费组合适合个人研究、延迟行情和资讯筛选，不提供 CME/COMEX/LME 的无限制实时 Tick、盘口或商业新闻再分发授权。生产公开服务前仍需核对各来源条款，并在需要时替换为持牌行情 Provider。
+
+## 金银比与图片辅助分析
+
+前端会用黄金/白银报价计算金银比，并结合美元、实际利率、库存和 CFTC 净持仓给出相对强弱解读；金银比只作为组合风格过滤器，不单独触发交易。图片分析支持 PNG/JPG/WebP，浏览器先做 8MB 校验和本地预览，再调用 `/api/v1/image-analysis`。默认 `VISION_PROVIDER=demo` 返回结构化的演示分析；接入生产视觉模型时，只需替换该 Provider，上传组件和返回字段保持不变。
 
 ## 上线到自有域名
 
