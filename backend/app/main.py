@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
@@ -13,7 +14,38 @@ async def health():
             "free_sources": ["gdelt", "fred", "cftc", "spot_or_delayed"]}
 
 @app.get("/api/v1/market/{symbol}")
-async def market(symbol: str): return await get_market_provider().snapshot(symbol)
+async def market(symbol: str):
+    # Keep this compatibility guard because FastAPI resolves the parameterized
+    # route before the more specific /market/global declaration below.
+    if symbol == "global":
+        rows = await asyncio.gather(*(get_market_provider().snapshot(item) for item in ("gold", "silver", "tin")))
+        return {"items": rows, "as_of": rows[0].get("as_of") if rows else None}
+    return await get_market_provider().snapshot(symbol)
+
+@app.get("/api/v1/market/global")
+async def global_market():
+    """Return the currently available cross-market snapshots with honest mode labels."""
+    symbols = ["gold", "silver", "tin"]
+    rows = await asyncio.gather(*(get_market_provider().snapshot(symbol) for symbol in symbols))
+    return {"items": rows, "as_of": rows[0].get("as_of") if rows else None,
+            "coverage": [
+                {"name": "COMEX 黄金 / 白银", "mode": "spot_or_delayed", "source_url": "https://www.alphavantage.co/documentation/"},
+                {"name": "LME 锡", "mode": "licensed_delayed", "source_url": "https://www.lme.com/Metals/Non-ferrous/LME-Tin"},
+                {"name": "CFTC COT", "mode": "weekly", "source_url": "https://publicreporting.cftc.gov/stories/s/r4w3-av2u"},
+                {"name": "FRED 宏观", "mode": "daily", "source_url": "https://fred.stlouisfed.org/docs/api/fred/"},
+            ]}
+
+@app.get("/api/v1/strategy/{symbol}")
+async def strategy(symbol: str):
+    snapshot = await get_market_provider().snapshot(symbol)
+    score = int(snapshot.get("bull_bear_score", 50))
+    bias = "偏多" if score >= 65 else "偏空" if score <= 40 else "中性"
+    return {"symbol": symbol, "bias": bias, "score": score,
+            "data_mode": snapshot.get("data_mode"), "provider": snapshot.get("provider"),
+            "price": snapshot.get("price"), "change_pct": snapshot.get("change_pct"),
+            "trigger": "价格、宏观与持仓信号共振后执行；事件前降低仓位",
+            "invalid": "价格跌破结构支撑或数据与价格出现明显背离",
+            "as_of": snapshot.get("as_of")}
 
 @app.get("/api/v1/news/{symbol}")
 async def news(symbol: str, limit: int = Query(default=20, ge=1, le=50)):

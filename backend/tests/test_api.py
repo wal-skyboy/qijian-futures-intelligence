@@ -12,3 +12,9 @@ def test_search_limit_and_empty():
 def test_change_types():
     types = {x['type'] for x in client.get('/api/v1/changes/gold').json()['items']}
     assert {'added','sentiment_changed','strategy_adjusted'} <= types
+def test_global_market_and_strategy():
+    global_data = client.get('/api/v1/market/global').json()
+    assert len(global_data['items']) == 3
+    assert {'gold','silver','tin'} <= {item['symbol'] for item in global_data['items']}
+    plan = client.get('/api/v1/strategy/gold').json()
+    assert plan['bias'] in {'偏多','偏空','中性'} and 0 <= plan['score'] <= 100
