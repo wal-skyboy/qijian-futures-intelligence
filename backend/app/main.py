@@ -1,16 +1,29 @@
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
-from .providers import get_provider
+from .providers import FreeCOTProvider, FreeMacroProvider, FreeNewsProvider, get_market_provider
 
 app = FastAPI(title="期鉴 API", version="1.0.0", docs_url="/api/docs")
 app.add_middleware(CORSMiddleware, allow_origins=settings.allowed_origins.split(","), allow_methods=["GET"], allow_headers=["*"])
 
 @app.get("/health")
-async def health(): return {"status": "ok", "provider": settings.provider, "mode": settings.app_env}
+async def health():
+    return {"status": "ok", "market_provider": settings.market_provider,
+            "news_provider": settings.news_provider, "mode": settings.app_env,
+            "free_sources": ["gdelt", "fred", "cftc", "spot_or_delayed"]}
 
 @app.get("/api/v1/market/{symbol}")
-async def market(symbol: str): return await get_provider().snapshot(symbol)
+async def market(symbol: str): return await get_market_provider().snapshot(symbol)
+
+@app.get("/api/v1/news/{symbol}")
+async def news(symbol: str, limit: int = Query(default=20, ge=1, le=50)):
+    return {"symbol": symbol, "items": await FreeNewsProvider().search(symbol, limit)}
+
+@app.get("/api/v1/macro")
+async def macro(): return await FreeMacroProvider().observations()
+
+@app.get("/api/v1/cot/{contract}")
+async def cot(contract: str): return await FreeCOTProvider().latest(contract)
 
 @app.get("/api/v1/search")
 async def search(q: str = Query(min_length=1, max_length=40)):

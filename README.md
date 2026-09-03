@@ -6,9 +6,21 @@
 
 前端：`npm install && npm run dev`。API：进入 `backend`，安装 requirements 后运行 `uvicorn app.main:app --reload`。生产整套服务可复制 `.env.example` 为 `.env` 后运行 `docker compose up -d --build`。
 
-## 生产数据接入
+## 免费数据组合（当前默认）
 
-实现 `backend/app/providers.py` 中的 `MarketProvider` 接口，然后用 `MARKET_PROVIDER` 选择。实时行情密钥填入 `MARKET_DATA_API_KEY`，资讯聚合密钥填入 `NEWS_API_KEY`。生产使用前应确认行情和新闻的再分发授权。
+默认 `MARKET_PROVIDER=free`：GDELT 新闻（`/api/v1/news/{symbol}`）、FRED 宏观（`/api/v1/macro`）、CFTC COT（`/api/v1/cot/{contract}`）和 Alpha Vantage 黄金/白银现货（`/api/v1/market/{symbol}`）。没有 Alpha Vantage/FRED Key 时会返回带 `data_mode` 的明确回退状态，绝不把 Demo 数值伪装成实时交易所价格。
+
+配置 `.env`：
+
+```env
+MARKET_PROVIDER=free
+NEWS_PROVIDER=gdelt
+ALPHAVANTAGE_API_KEY=
+FRED_API_KEY=
+CFTC_APP_TOKEN=
+```
+
+GDELT 不需 Key；CFTC 公共 PRE 低频访问通常不需 Token；FRED 需要免费账户 Key；Alpha Vantage 免费 Key 适合低频现货/历史查询。免费组合适合个人研究、延迟行情和资讯筛选，不提供 CME/COMEX/LME 的无限制实时 Tick、盘口或商业新闻再分发授权。生产公开服务前仍需核对各来源条款，并在需要时替换为持牌行情 Provider。
 
 ## 上线到自有域名
 
