@@ -12,6 +12,15 @@
 
 默认 `MARKET_PROVIDER=free`：GDELT 新闻（`/api/v1/news/{symbol}`）、FRED 宏观（`/api/v1/macro`）、CFTC COT（`/api/v1/cot/{contract}`）和 Alpha Vantage 市场适配器（`/api/v1/market/{symbol}`）。配置免费 Alpha Vantage Key 后，黄金/白银使用官方文档标注的 live spot，美元使用 USD/CNY 外汇实时汇率，铜与 WTI 使用日频参考；锡仍明确标为需要交易所授权。没有 Key 或 Provider 失败时返回带 `data_mode` 的明确回退状态，绝不把 Demo 数值伪装成实时交易所价格。
 
+## 公开版与私有版
+
+页面现在明确分为两条数据路径：
+
+- **公开版**：国际黄金/白银现货与 USD/CNY 外汇在免费 Provider 明确返回实时值时标为“免费现货实时/免费外汇实时”；国内沪金、沪银、沪铜、沪锡、原油单独通过 `/api/v1/market/domestic-delayed` 展示“官方延时行情”。未配置授权延时接口时只显示“官方延时 · 待接入”和官方来源链接，不显示伪造价格。
+- **私有版**：`/api/v1/private/session` 提供 HttpOnly、Secure、8 小时会话；`/api/v1/private/ctp/board` 只向已登录的本人会话返回 CTP Bridge 数据。EdgeOne Pages 函数不能直接维持期货公司 CTP 的 TCP 长连接，因此需在中国大陆自有主机或受信网络部署一个只服务本人的 Bridge，再把 HTTPS 地址填入 `CTP_BRIDGE_URL`。未配置 Bridge 时接口返回“CTP Bridge 未配置”，不会把旧数据标成实时。
+
+公开版和私有版均返回 `data_mode`、`provider`、`as_of`、`delayed`、`source_url`、`note` 等字段；前端以这些字段渲染标签，便于核验和审计。公开页面不接受 CTP 凭据，也不输出私有盘口。
+
 实时交易看板下方提供 K 线视图，前端调用同域 `/api/v1/market/candles?symbol={symbol}&interval=daily|weekly|monthly`。EdgeOne 函数优先使用 Alpha Vantage 的 `GOLD_SILVER_HISTORY`、`FX_DAILY`、`WTI`、`COPPER` 历史接口，并在黄金/白银/美元上将最新免费现货/外汇报价标在最后一根；历史源只返回收盘价时，页面会明确写出 OHLC 为结构合成，不把它标成交易所实时期货 K 线。K 线服务端缓存 60 秒，适配免费额度；铜/原油为日频或更低频参考，锡保持“交易所授权待接入”。
 
 配置 `.env`：
@@ -22,6 +31,11 @@ NEWS_PROVIDER=gdelt
 ALPHAVANTAGE_API_KEY=
 FRED_API_KEY=
 CFTC_APP_TOKEN=
+DOMESTIC_DELAYED_URL=
+DOMESTIC_DELAYED_TOKEN=
+PRIVATE_ACCESS_CODE=
+CTP_BRIDGE_URL=
+CTP_BRIDGE_TOKEN=
 VISION_PROVIDER=demo
 VISION_API_KEY=
 ```
@@ -29,6 +43,10 @@ VISION_API_KEY=
 GDELT 不需 Key；CFTC 公共 PRE 低频访问通常不需 Token；FRED 需要免费账户 Key；Alpha Vantage 免费 Key 适合低频现货/历史查询。免费组合适合个人研究、延迟行情和资讯筛选，不提供 CME/COMEX/LME 的无限制实时 Tick、盘口或商业新闻再分发授权。生产公开服务前仍需核对各来源条款，并在需要时替换为持牌行情 Provider。
 
 “实时”只对 Provider 明确支持的现货或外汇报价使用；交易所级期货 Tick、盘口和公开再分发通常需要 CME、LME、SHFE 等交易所或其授权分销商许可。页面会同时显示 `data_mode`、来源和时间戳，便于审计。
+
+国内期货延时适配器约定：`DOMESTIC_DELAYED_URL` 返回 JSON 数组或 `{items:[...]}`，每行至少包含 `symbol`（`au/ag/cu/sn/sc` 之一）、`price`、`change_pct`、`as_of`；可选 `contract`、`high`、`low`、`open`、`volume`、`open_interest`、`source_url`。服务端会白名单归一化字段，并将其标为 `official_delayed`。请只接入交易所或授权分销商允许公开展示的延时数据。
+
+CTP Bridge 约定：`CTP_BRIDGE_URL` 返回 `{items:[{symbol,name,contract,last,bid,ask,change_pct,volume,open_interest,as_of}],as_of,latency_ms}`；可用 `CTP_BRIDGE_TOKEN` 做服务端 Bearer 校验。Bridge 应自行使用期货公司提供的 CTP SDK/柜台连接，平台只接收已归一化的行情，不保存交易密码、不提供自动下单。
 
 ## 金银比与图片辅助分析
 
