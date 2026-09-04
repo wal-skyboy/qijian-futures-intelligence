@@ -69,10 +69,12 @@ CTP Bridge 约定：`CTP_BRIDGE_URL` 返回 `{items:[{symbol,name,contract,last,
 
 EdgeOne Pages 负责静态前端；仓库同时提供 `edgeone/cloud-functions/` 同域 API（`/api/v1/market/board`、`/api/v1/market/{symbol}`、`/api/v1/market/candles?symbol=...`、`/api/v1/image-analysis`），部署成功后无需跨域配置，前端默认直接调用当前域名。要启用免费源，在 EdgeOne 项目环境变量增加 `ALPHAVANTAGE_API_KEY`（只放服务端）；未设置时接口仍返回可审计的演示/授权待接入状态，不会伪装成实盘。若使用更完整的 FastAPI 服务，则可继续把 `backend/` 作为独立 API 运行，并在前端环境变量加入 `NEXT_PUBLIC_API_URL=https://你的-api-域名` 后重新部署。现货/外汇源没有可比昨收时，涨跌幅显示为“—”，避免把演示涨跌幅混入实时价格。
 
-## 已实现的质量优化
+## 100 点平台对标优化
 
-本轮质量门展示 40 项检查：Provider 可替换、去重状态反馈、来源分级、事件影响评分、时效时间戳、置信度校准、观点版本化、增删/多空/策略 diff、宏观与技术面融合、成交量/OI、波动率与金银比、事件窗口、七日策略、仓位上限、止损、催化剂、风险清单、数据新鲜度、刷新去抖、缓存扩展点、移动端折叠、深色对比度、键盘焦点、错误恢复、API 健康检查、安全响应头、SEO、可观测性、提醒开关、时区明确、紧凑模式、来源健康、过期防护等。
+质量门现按 10 家平台 × 10 项能力展示 100 个可审计检查点：TradingView（图表与技术分析）、Bloomberg Terminal（宏观与研究工作流）、LSEG Workspace（跨资产与事件研究）、FactSet Workstation（组合与风险分析）、Barchart Trader（期货合约与数据纪律）、CQG Desktop（执行与交易纪律）、Sierra Chart（订单流与市场微观结构）、Bookmap（流动性与冲击识别）、Koyfin（看板与信息架构）、Trading Technologies（安全、合规与可观测性）。
 
-能力基准参考了 TradingView 的多品种/观察列表提醒和经济日历、CME 的成交量与持仓工具、Bloomberg 的新闻与组合风险工作流；界面中的“质量门”会逐项展示这些检查项。
+页面会按“已落地 / 接入后完善 / 需授权”筛选，并显示每个平台的 10 个点及能力依据。这样可以把已完成的界面和规则、需要接入新 Provider 的路线、以及必须取得交易权限的功能分开审计；100 点不是收益率、胜率或交易所实时授权的保证。
+
+每次发布前应运行 `npm run build`，并在 EdgeOne 以 `/edgeone`、`npm run build`、`build`、Node.js `22.17.1` 的配置部署；当前线上版本的回滚标签为 `backup/pre-100-point-optimization-2026-09-05`。
 
 > Demo 数值与事件仅用于产品演示，不构成投资建议。
