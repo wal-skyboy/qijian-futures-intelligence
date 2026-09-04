@@ -32,3 +32,13 @@ def test_focus_market_search_and_modes():
     assert '美元' in names
     usd = client.get('/api/v1/market/usd').json()
     assert usd['data_mode'] in {'demo_fallback_no_key', 'fx_realtime', 'fallback_provider_error'}
+
+def test_focus_market_freshness_contract():
+    data = client.get('/api/v1/market/global').json()
+    modes = {item['symbol']: item['data_mode'] for item in data['items']}
+    assert modes['gold'] in {'demo_fallback_no_key', 'spot_realtime', 'fallback_provider_error'}
+    assert modes['silver'] in {'demo_fallback_no_key', 'spot_realtime', 'fallback_provider_error'}
+    assert modes['usd'] in {'demo_fallback_no_key', 'fx_realtime', 'fallback_provider_error'}
+    assert modes['copper'] in {'demo_fallback_no_key', 'daily_reference', 'fallback_provider_error'}
+    assert modes['crude'] in {'demo_fallback_no_key', 'daily_reference', 'fallback_provider_error'}
+    assert modes['tin'] == 'licensed_delayed_required' or modes['tin'] == 'demo_fallback_no_key'
