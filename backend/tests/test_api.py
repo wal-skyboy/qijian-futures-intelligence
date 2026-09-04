@@ -19,12 +19,21 @@ def test_global_market_and_strategy():
     assert {'gold','silver','copper','tin','crude','usd'} <= {item['symbol'] for item in global_data['items']}
     plan = client.get('/api/v1/strategy/gold').json()
     assert plan['bias'] in {'偏多','偏空','中性'} and 0 <= plan['score'] <= 100
+def test_market_board_sync_contract():
+    board = client.get('/api/v1/market/board')
+    data = board.json()
+    assert board.status_code == 200
+    assert len(data['items']) == 6
+    assert data['sync']['refresh_mode'] == 'polling'
+    assert data['sync']['item_count'] == 6
+    assert data['sync']['latency_ms'] >= 0
 def test_image_analysis_contract():
     response = client.post('/api/v1/image-analysis', json={
         'file_name':'chart.png','mime_type':'image/png','size_bytes':1024,
         'width':1280,'height':720,'asset':'silver'})
     data = response.json()
     assert response.status_code == 200 and data['provider'] == 'demo_vision'
+    assert data['received'] is True and data['analysis_status'] == 'demo'
     assert data['signals'] and 'silver' not in data['title'].lower()
 
 def test_focus_market_search_and_modes():

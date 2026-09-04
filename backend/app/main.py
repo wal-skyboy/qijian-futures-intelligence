@@ -1,4 +1,6 @@
 import asyncio
+from datetime import datetime, timezone
+from time import monotonic
 from pydantic import BaseModel, Field
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +10,11 @@ from .providers import FreeCOTProvider, FreeMacroProvider, FreeNewsProvider, get
 app = FastAPI(title="期鉴 API", version="1.0.0", docs_url="/api/docs")
 app.add_middleware(CORSMiddleware, allow_origins=settings.allowed_origins.split(","), allow_methods=["GET", "POST"], allow_headers=["*"])
 
+MARKET_SYMBOLS = ("gold", "silver", "copper", "tin", "crude", "usd")
+_board_cache: dict[str, object] = {"expires_at": 0.0, "payload": None}
+_board_lock = asyncio.Lock()
+BOARD_CACHE_SECONDS = 15
+
 class ImageAnalysisRequest(BaseModel):
     file_name: str = Field(default="image", max_length=160)
     mime_type: str = Field(default="image/jpeg", max_length=80)
@@ -15,6 +22,51 @@ class ImageAnalysisRequest(BaseModel):
     width: int = Field(default=0, ge=0, le=20000)
     height: int = Field(default=0, ge=0, le=20000)
     asset: str = Field(default="gold", max_length=20)
+
+async def _market_board_payload() -> dict:
+    """Fetch one coherent quote snapshot for the board.
+
+    The short server-side cache prevents a 10-second browser refresh from
+    multiplying calls against free-provider rate limits while preserving a
+    single sync timestamp for every row in the board.
+    """
+    now = monotonic()
+    cached = _board_cache.get("payload")
+    if cached is not None and now < float(_board_cache.get("expires_at", 0.0)):
+        return cached  # type: ignore[return-value]
+    async with _board_lock:
+        now = monotonic()
+        cached = _board_cache.get("payload")
+        if cached is not None and now < float(_board_cache.get("expires_at", 0.0)):
+            return cached  # type: ignore[return-value]
+        started = monotonic()
+        rows = await asyncio.gather(*(get_market_provider().snapshot(item) for item in MARKET_SYMBOLS))
+        synced_at = datetime.now(timezone.utc).isoformat()
+        live_modes = {"spot_realtime", "fx_realtime"}
+        live_count = sum(1 for row in rows if row.get("data_mode") in live_modes)
+        payload = {
+            "items": rows,
+            "as_of": synced_at,
+            "sync": {
+                "status": "ok",
+                "synced_at": synced_at,
+                "latency_ms": round((monotonic() - started) * 1000, 1),
+                "refresh_mode": "polling",
+                "cache_ttl_seconds": BOARD_CACHE_SECONDS,
+                "live_count": live_count,
+                "item_count": len(rows),
+            },
+            "coverage": [
+                {"name": "黄金 / 白银现货", "mode": "spot_realtime", "source_url": "https://www.alphavantage.co/documentation/"},
+                {"name": "美元 USD/CNY", "mode": "fx_realtime", "source_url": "https://www.alphavantage.co/documentation/"},
+                {"name": "铜 / WTI 原油", "mode": "daily_reference", "source_url": "https://www.alphavantage.co/documentation/"},
+                {"name": "LME 锡", "mode": "licensed_delayed_required", "source_url": "https://www.lme.com/Metals/Non-ferrous/LME-Tin"},
+                {"name": "CFTC COT", "mode": "weekly", "source_url": "https://publicreporting.cftc.gov/stories/s/r4w3-av2u"},
+                {"name": "FRED 宏观", "mode": "daily", "source_url": "https://fred.stlouisfed.org/docs/api/fred/"},
+            ],
+        }
+        _board_cache.update({"expires_at": monotonic() + BOARD_CACHE_SECONDS, "payload": payload})
+        return payload
 
 @app.get("/health")
 async def health():
@@ -28,25 +80,14 @@ async def health():
 async def market(symbol: str):
     # Keep this compatibility guard because FastAPI resolves the parameterized
     # route before the more specific /market/global declaration below.
-    if symbol == "global":
-        rows = await asyncio.gather(*(get_market_provider().snapshot(item) for item in ("gold", "silver", "copper", "tin", "crude", "usd")))
-        return {"items": rows, "as_of": rows[0].get("as_of") if rows else None}
+    if symbol in {"global", "board"}:
+        return await _market_board_payload()
     return await get_market_provider().snapshot(symbol)
 
 @app.get("/api/v1/market/global")
 async def global_market():
     """Return the currently available cross-market snapshots with honest mode labels."""
-    symbols = ["gold", "silver", "copper", "tin", "crude", "usd"]
-    rows = await asyncio.gather(*(get_market_provider().snapshot(symbol) for symbol in symbols))
-    return {"items": rows, "as_of": rows[0].get("as_of") if rows else None,
-            "coverage": [
-                {"name": "黄金 / 白银现货", "mode": "spot_realtime", "source_url": "https://www.alphavantage.co/documentation/"},
-                {"name": "美元 USD/CNY", "mode": "fx_realtime", "source_url": "https://www.alphavantage.co/documentation/"},
-                {"name": "铜 / WTI 原油", "mode": "daily_reference", "source_url": "https://www.alphavantage.co/documentation/"},
-                {"name": "LME 锡", "mode": "licensed_delayed_required", "source_url": "https://www.lme.com/Metals/Non-ferrous/LME-Tin"},
-                {"name": "CFTC COT", "mode": "weekly", "source_url": "https://publicreporting.cftc.gov/stories/s/r4w3-av2u"},
-                {"name": "FRED 宏观", "mode": "daily", "source_url": "https://fred.stlouisfed.org/docs/api/fred/"},
-            ]}
+    return await _market_board_payload()
 
 @app.get("/api/v1/strategy/{symbol}")
 async def strategy(symbol: str):
@@ -69,7 +110,8 @@ async def image_analysis(payload: ImageAnalysisRequest):
     upload UI or response shape.
     """
     asset_name = {"gold": "黄金", "silver": "白银", "copper": "铜", "tin": "锡", "crude": "原油", "usd": "美元"}.get(payload.asset, payload.asset)
-    return {"provider": "demo_vision", "mode": "演示分析",
+    return {"provider": "demo_vision", "mode": "演示分析", "received": True,
+            "analysis_status": "demo", "received_at": datetime.now(timezone.utc).isoformat(),
             "title": f"{asset_name} 图片结构已读取",
             "conclusion": f"已接收 {payload.file_name}（{payload.width}×{payload.height}），当前 {asset_name} 研判仍需结合价格、成交量、持仓和事件窗口交叉验证。",
             "signals": ["识别趋势线、支撑阻力与突破形态", "检查图表周期、合约月份和时间戳", "对照金银比 / 宏观数据确认是否背离"],
