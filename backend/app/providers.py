@@ -127,6 +127,45 @@ class FreeNewsProvider:
         except (httpx.HTTPError, ValueError, TypeError):
             return []
 
+    async def search_global(self, limit: int = 40) -> list[dict]:
+        """Fetch one deduplicable global commodity/macro news window.
+
+        Keeping this as a separate adapter method lets the API and the
+        EdgeOne function share the same provider contract without issuing one
+        request per selected sidebar asset.
+        """
+        configured = settings.global_events_url.strip()
+        params = {} if configured else {
+            "query": "(gold OR bullion OR XAU OR silver OR XAG OR copper OR tin OR crude oil OR WTI OR US dollar OR DXY)",
+            "mode": "artlist", "format": "json", "maxrecords": min(limit, 50),
+            "sort": "datedesc", "timespan": "24h",
+        }
+        url = configured or "https://api.gdeltproject.org/api/v2/doc/doc"
+        try:
+            timeout = max(1.0, settings.events_fetch_timeout_ms / 1000)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                payload = response.json()
+            if isinstance(payload, list):
+                rows = payload
+            elif isinstance(payload, dict):
+                rows = next((payload.get(key, []) for key in ("articles", "items", "events", "data") if isinstance(payload.get(key), list)), [])
+            else:
+                rows = []
+            items = [{"title": item.get("title", ""), "url": item.get("url") or item.get("link"),
+                      "source": item.get("domain") or item.get("source") or item.get("publisher", "unknown"),
+                      "seen_at": item.get("seendate") or item.get("publishedAt") or item.get("published_at") or item.get("date"),
+                      "snippet": item.get("snippet") or item.get("seendescription") or item.get("summary") or item.get("description"),
+                      "asset": item.get("asset"), "side": item.get("side") or item.get("sentiment"),
+                      "impact": item.get("impact") or item.get("impact_score"), "confidence": item.get("confidence"),
+                      "provider": "configured_events" if configured else "gdelt",
+                      "license": "configured" if configured else "open_data"}
+                     for item in rows if isinstance(item, dict) and (item.get("url") or item.get("link"))]
+            return sorted(items, key=lambda item: item.get("seen_at") or "", reverse=True)
+        except (httpx.HTTPError, ValueError, TypeError):
+            return []
+
 class FreeMacroProvider:
     series = {"10y_yield": "DGS10", "dollar_index": "DTWEXBGS", "oil": "DCOILWTICO"}
     async def observations(self) -> dict:
