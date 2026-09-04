@@ -41,14 +41,16 @@ class DemoProvider(MarketProvider):
         "tin": ("锡", 256780, -.42, 43),
         "copper": ("铜", 9842.50, .34, 58),
         "crude": ("原油", 78.420, -.67, 47),
-        "usd": ("美元", 103.42, -.18, 52),
+        "usd": ("美元", 7.18, -.18, 52),
         "soybean": ("大豆", 1018.25, .22, 54),
         "corn": ("玉米", 412.75, -.18, 49),
         "rebar": ("螺纹钢", 3462, -.31, 45),
     }
     async def snapshot(self, symbol: str) -> dict:
         name, price, change, score = self.values.get(symbol, self.values["gold"])
+        currency = "CNY" if symbol == "rebar" else "USD/CNY" if symbol == "usd" else "USD"
         return {"symbol": symbol, "name": name, "price": price, "change_pct": change,
+                "currency": currency,
                 "bull_bear_score": score, "provider": "demo", "delayed": True,
                 "data_mode": "demo_fallback", "source_url": None,
                 "as_of": datetime.now(timezone.utc).isoformat()}

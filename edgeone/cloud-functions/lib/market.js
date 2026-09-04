@@ -4,7 +4,7 @@ const MARKET_DEFINITIONS = {
   copper: { name: '铜', price: 9842.5, change: 0.34, score: 58, currency: 'USD', avSymbol: 'COPPER', function: 'COPPER', historyFunction: 'COPPER', mode: 'daily_reference', source: 'https://www.alphavantage.co/documentation/' },
   tin: { name: '锡', price: 256780, change: -0.42, score: 43, currency: 'USD', avSymbol: 'TIN', function: '', historyFunction: '', mode: 'licensed_delayed_required', source: 'https://www.lme.com/Metals/Non-ferrous/LME-Tin' },
   crude: { name: '原油', price: 78.42, change: -0.67, score: 47, currency: 'USD', avSymbol: 'WTI', function: 'WTI', historyFunction: 'WTI', mode: 'daily_reference', source: 'https://www.alphavantage.co/documentation/' },
-  usd: { name: '美元', price: 103.42, change: -0.18, score: 52, currency: '指数点', avSymbol: 'USD/CNY', function: 'CURRENCY_EXCHANGE_RATE', historyFunction: 'FX_DAILY', mode: 'fx_realtime', source: 'https://www.alphavantage.co/documentation/' },
+  usd: { name: '美元', price: 7.18, change: -0.18, score: 52, currency: 'USD/CNY', avSymbol: 'USD/CNY', function: 'CURRENCY_EXCHANGE_RATE', historyFunction: 'FX_DAILY', mode: 'fx_realtime', source: 'https://www.alphavantage.co/documentation/' },
 };
 
 const LIVE_MODES = new Set(['spot_realtime', 'fx_realtime']);

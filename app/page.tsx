@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Asset = '黄金' | '白银' | '铜' | '锡' | '原油' | '美元' | '大豆' | '玉米' | '螺纹钢';
-type CurrencyCode = 'USD' | 'CNY' | '指数点';
+type CurrencyCode = 'USD' | 'CNY' | 'USD/CNY' | '指数点';
 type Event = { id:number; asset:Asset; side:'利多'|'利空'|'中性'; title:string; summary:string; source:string; sourceUrl:string; publishedAt:string; time:string; impact:number; confidence:number; tags:string[] };
 type Snapshot = { symbol?:string; name?:string; contract?:string; price:number|null; change_pct?:number|null; currency?:CurrencyCode|string; provider:string; data_mode:string; data_label?:string; delayed?:boolean; available?:boolean; as_of?:string|null; source_url?:string; freshness?:string; note?:string };
 type WeekEvent = { id:number; date:string; window:'过去7天'|'未来7天'; side:'利多'|'利空'|'中性'; impact:'高'|'中'; title:string; assets:string; why:string; source:string; sourceUrl:string };
@@ -38,13 +38,13 @@ const assets: Record<Asset, {symbol:string; price:string; change:string; score:n
   铜:{symbol:'HG / CU',price:'9,842.50',change:'+0.34%',score:58,tone:'中性',currency:'USD'},
   锡:{symbol:'SN / LME',price:'256,780',change:'-0.42%',score:43,tone:'中性偏空',currency:'USD'},
   原油:{symbol:'CL / WTI',price:'78.420',change:'-0.67%',score:47,tone:'震荡偏空',currency:'USD'},
-  美元:{symbol:'DXY / USD',price:'103.42',change:'-0.18%',score:52,tone:'中性',currency:'指数点'},
+  美元:{symbol:'USD/CNY',price:'7.180',change:'-0.18%',score:52,tone:'中性',currency:'USD/CNY'},
   大豆:{symbol:'ZS / CBOT',price:'1,018.25',change:'+0.22%',score:54,tone:'中性',currency:'USD'},
   玉米:{symbol:'ZC / CBOT',price:'412.75',change:'-0.18%',score:49,tone:'中性',currency:'USD'},
   螺纹钢:{symbol:'RB / SHFE',price:'3,462',change:'-0.31%',score:45,tone:'中性偏空',currency:'CNY'},
 };
 const assetContext:Record<Asset,{range:string;catalyst:string;risk:string;verify:string}>={
- 黄金:{range:'2,621.80 – 2,661.30',catalyst:'实际利率继续回落',risk:'高位拥挤与非农超预期',verify:'非农 + ETF 流向'},白银:{range:'31.08 – 31.86',catalyst:'金银比回落与工业需求改善',risk:'库存累积与波动放大',verify:'COMEX 库存 + 金银比'},铜:{range:'9,760 – 9,930',catalyst:'中国制造业需求回升',risk:'美元走强与库存累积',verify:'中国 PMI + LME 库存'},锡:{range:'254,000 – 259,800',catalyst:'矿端扰动与库存去化',risk:'下游订单恢复偏慢',verify:'LME / 中国库存'},原油:{range:'77.60 – 79.20',catalyst:'供给收缩与库存下降',risk:'需求走弱与意外累库',verify:'EIA 库存 + OPEC+'},美元:{range:'102.60 – 104.20',catalyst:'美国数据走弱与降息预期升温',risk:'美国数据超预期与实际利率上行',verify:'DXY + 美债实际利率'},大豆:{range:'1,000 – 1,032',catalyst:'天气扰动与出口改善',risk:'天气改善与出口走弱',verify:'USDA + 天气'},玉米:{range:'405 – 422',catalyst:'天气扰动或出口超预期',risk:'产量上修与库存累积',verify:'USDA + 天气'},螺纹钢:{range:'3,380 – 3,520',catalyst:'库存去化与基建回升',risk:'需求疲弱与库存反弹',verify:'钢材库存 + 基建数据'}
+ 黄金:{range:'2,621.80 – 2,661.30',catalyst:'实际利率继续回落',risk:'高位拥挤与非农超预期',verify:'非农 + ETF 流向'},白银:{range:'31.08 – 31.86',catalyst:'金银比回落与工业需求改善',risk:'库存累积与波动放大',verify:'COMEX 库存 + 金银比'},铜:{range:'9,760 – 9,930',catalyst:'中国制造业需求回升',risk:'美元走强与库存累积',verify:'中国 PMI + LME 库存'},锡:{range:'254,000 – 259,800',catalyst:'矿端扰动与库存去化',risk:'下游订单恢复偏慢',verify:'LME / 中国库存'},原油:{range:'77.60 – 79.20',catalyst:'供给收缩与库存下降',risk:'需求走弱与意外累库',verify:'EIA 库存 + OPEC+'},美元:{range:'7.10 – 7.28',catalyst:'美国数据走弱与降息预期升温',risk:'美国数据超预期与实际利率上行',verify:'USD/CNY + 美债实际利率'},大豆:{range:'1,000 – 1,032',catalyst:'天气扰动与出口改善',risk:'天气改善与出口走弱',verify:'USDA + 天气'},玉米:{range:'405 – 422',catalyst:'天气扰动或出口超预期',risk:'产量上修与库存累积',verify:'USDA + 天气'},螺纹钢:{range:'3,380 – 3,520',catalyst:'库存去化与基建回升',risk:'需求疲弱与库存反弹',verify:'钢材库存 + 基建数据'}
 };
 const events: Event[] = [
  {id:1,asset:'黄金',side:'利多',title:'美债实际收益率回落，避险资金回流黄金',summary:'美元与实际利率同步走弱，黄金资金流出现连续净流入。若非农预期进一步下修，金价上行动能或延续。',source:'Reuters',sourceUrl:'https://www.reuters.com/markets/commodities/',publishedAt:'2026-09-03T09:42:00+08:00',time:'09:42',impact:92,confidence:88,tags:['宏观','资金流','跨源验证']},
@@ -65,7 +65,7 @@ const strategy: Record<Asset,string[]> = {
  锡:['观望，关注 254,000 支撑','支撑确认后小仓试多','若跌破支撑转为防守','关注产区供应消息','突破 260,000 再加仓','高位减仓控制回撤','等待下游订单数据'],
  铜:['回踩 9,760 附近观察','站稳 9,900 后顺势跟随','关注中国需求数据','库存累积时减仓','突破 10,050 再加仓','周末前降低杠杆','复核美元与制造业 PMI'],
  原油:['反弹 79.20 附近减仓','跌破 77.60 先防守','关注 OPEC+ 供给信号','库存意外累库止损收紧','站稳 80.00 再转多','避免事件前重仓','复盘裂解价差'],
- 美元:['103.00 附近观察支撑','站稳 103.80 再跟随','关注美国就业与通胀','实际利率上行时偏多美元','突破 104.20 再加仓','重大数据前降低杠杆','复核金银比与风险资产'],
+ 美元:['7.15 附近观察支撑','站稳 7.20 再跟随','关注美国就业与通胀','实际利率上行时偏多美元','突破 7.28 再加仓','重大数据前降低杠杆','复核金银比与风险资产'],
  大豆:['1,010 附近轻仓观察','站稳 1,030 后跟随','关注天气与出口销售','天气改善时降低多单','突破 1,050 再加仓','数据日前减仓','等待 USDA 验证'],
  玉米:['410 附近观察支撑','站稳 420 后跟随','关注种植与天气','跌破 405 转防守','放量突破 430 再加仓','避免隔夜重仓','复核库存与出口'],
  螺纹钢:['3,420 附近观察','需求回升再试多','关注库存与基建','跌破 3,380 先防守','突破 3,520 再跟随','控制黑色系相关性','等待地产与基建数据'],
@@ -118,7 +118,7 @@ const currentPlans: Record<Asset,{bias:string;action:string;trigger:string;inval
  锡:{bias:'中性偏空',action:'等待 254,000 支撑确认；反弹靠近 260,000 先减仓，不在区间中部追单。',trigger:'库存去化与现货升水同时出现',invalid:'跌破 254,000 且下游订单无改善',size:'单品种风险 ≤ 0.25R，优先观望',next:'LME 库存 / 注销仓单 + 中国库存'},
  铜:{bias:'中性观察',action:'等待需求与库存同向确认，9,760 附近观察承接，避免在区间中部追价。',trigger:'中国制造业数据改善且库存去化',invalid:'美元走强、库存累积且跌破 9,760',size:'单品种风险 ≤ 0.3R，仓位 ≤ 30%',next:'中国 PMI + LME / COMEX 库存'},
  原油:{bias:'震荡偏空',action:'反弹减仓、破位防守；只有供给扰动与价格重新站上 80.00 才考虑转多。',trigger:'供给收缩且库存连续下降',invalid:'库存累积或跌破 77.60',size:'单品种风险 ≤ 0.3R，避免事件前重仓',next:'EIA 库存 + OPEC+ 会议'},
- 美元:{bias:'中性观察',action:'围绕 102.60–104.20 做条件跟踪；数据走弱时降低美元多头，站稳阻力再顺势。',trigger:'实际利率上行且 DXY 站稳 103.80',invalid:'跌破 102.60 或就业数据明显转弱',size:'单品种风险 ≤ 0.25R，避免与贵金属方向重复',next:'美国就业 + 美债实际利率'},
+ 美元:{bias:'中性观察',action:'围绕 7.10–7.28 做条件跟踪；数据走弱时降低美元多头，站稳阻力再顺势。',trigger:'实际利率上行且 USD/CNY 站稳 7.20',invalid:'跌破 7.10 或就业数据明显转弱',size:'单品种风险 ≤ 0.25R，避免与贵金属方向重复',next:'美国就业 + 美债实际利率'},
  大豆:{bias:'中性观察',action:'天气与出口数据确认前轻仓；1,010 附近观察，突破 1,030 再跟随。',trigger:'天气恶化且出口销售改善',invalid:'天气改善、出口走弱且跌破 1,000',size:'单品种风险 ≤ 0.25R，仓位 ≤ 25%',next:'USDA 报告 + 美国天气'},
  玉米:{bias:'中性观察',action:'围绕 410–420 区间做条件单，产量与库存未确认前不追涨杀跌。',trigger:'天气扰动或出口销售超预期',invalid:'跌破 405 且库存预期上修',size:'单品种风险 ≤ 0.25R，优先区间交易',next:'USDA 供需 + 天气窗口'},
  螺纹钢:{bias:'中性偏空',action:'等待库存拐点和现货成交改善；反弹靠近 3,520 先减仓。',trigger:'库存连续去化且基建需求回升',invalid:'跌破 3,380 或库存重新累积',size:'单品种风险 ≤ 0.25R，控制黑色系相关性',next:'钢材库存 + 基建 / 地产数据'},
@@ -165,12 +165,12 @@ const formatSyncTime=(iso?:string)=>{if(!iso)return '等待同步'; const date=n
 const quoteNumber=(value:string)=>Number(value.replace(/,/g,''));
 const formatPrice=(value:number|null|undefined)=>typeof value==='number'&&Number.isFinite(value)?value.toLocaleString('en-US',{maximumFractionDigits:3}):'—';
 const formatChange=(value:number|null|undefined)=>typeof value==='number'&&Number.isFinite(value)?`${value>=0?'+':''}${value.toFixed(2)}%`:'—';
-const currencyLabel=(currency:CurrencyCode|string|undefined)=>currency==='CNY'?'CNY / 人民币':currency==='指数点'?'DXY 指数点':'USD / 美元';
-const currencyShort=(currency:CurrencyCode|string|undefined)=>currency==='CNY'?'CNY':currency==='指数点'?'点':'USD';
+const currencyLabel=(currency:CurrencyCode|string|undefined)=>currency==='CNY'?'CNY / 人民币':currency==='USD/CNY'?'USD/CNY 汇率（人民币/美元）':currency==='指数点'?'DXY 指数点':'USD / 美元';
+const currencyShort=(currency:CurrencyCode|string|undefined)=>currency==='CNY'?'CNY':currency==='USD/CNY'?'CNY/USD':currency==='指数点'?'点':'USD';
 const assetCurrency=(name:Asset)=>assets[name].currency;
 const snapshotCurrency=(name:Asset,payload?:Pick<Snapshot,'currency'|'data_mode'|'provider'>|null,context:'global'|'domestic'|'private'='global'):CurrencyCode=>{
  if(context==='domestic'||context==='private')return 'CNY';
- if(payload?.currency==='CNY'||payload?.currency==='USD'||payload?.currency==='指数点')return payload.currency;
+ if(payload?.currency==='CNY'||payload?.currency==='USD'||payload?.currency==='USD/CNY'||payload?.currency==='指数点')return payload.currency;
  if(payload?.data_mode==='official_delayed'||payload?.provider?.includes('shfe'))return 'CNY';
  return assetCurrency(name);
 };
