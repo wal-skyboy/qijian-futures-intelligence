@@ -94,13 +94,26 @@ def _normalise_event(raw: dict, index: int, provider_url: str) -> dict | None:
         "impact": impact, "confidence": confidence, "tags": tags,
     }
 
+class ImageAnalysisItem(BaseModel):
+    id: str = Field(default="", max_length=80)
+    kind: str = Field(default="image", max_length=16)
+    file_name: str = Field(default="image", max_length=160)
+    mime_type: str = Field(default="image/jpeg", max_length=80)
+    size_bytes: int = Field(default=0, ge=0, le=15 * 1024 * 1024)
+    width: int | None = Field(default=None, ge=0, le=20000)
+    height: int | None = Field(default=None, ge=0, le=20000)
+    url: str | None = Field(default=None, max_length=2048)
+
 class ImageAnalysisRequest(BaseModel):
     file_name: str = Field(default="image", max_length=160)
     mime_type: str = Field(default="image/jpeg", max_length=80)
-    size_bytes: int = Field(default=0, ge=0, le=8 * 1024 * 1024)
+    size_bytes: int = Field(default=0, ge=0, le=15 * 1024 * 1024)
     width: int = Field(default=0, ge=0, le=20000)
     height: int = Field(default=0, ge=0, le=20000)
     asset: str = Field(default="gold", max_length=20)
+    kind: str = Field(default="image", max_length=16)
+    url: str | None = Field(default=None, max_length=2048)
+    items: list[ImageAnalysisItem] = Field(default_factory=list, max_length=6)
 
 async def _market_board_payload() -> dict:
     """Fetch one coherent quote snapshot for the board.
@@ -224,12 +237,30 @@ async def image_analysis(payload: ImageAnalysisRequest):
     upload UI or response shape.
     """
     asset_name = {"gold": "黄金", "silver": "白银", "copper": "铜", "tin": "锡", "crude": "原油", "usd": "美元"}.get(payload.asset, payload.asset)
-    return {"provider": "demo_vision", "mode": "演示分析", "received": True,
-            "analysis_status": "demo", "received_at": datetime.now(timezone.utc).isoformat(),
-            "title": f"{asset_name} 图片结构已读取",
-            "conclusion": f"已接收 {payload.file_name}（{payload.width}×{payload.height}），当前 {asset_name} 研判仍需结合价格、成交量、持仓和事件窗口交叉验证。",
-            "signals": ["识别趋势线、支撑阻力与突破形态", "检查图表周期、合约月份和时间戳", "对照金银比 / 宏观数据确认是否背离"],
-            "next": "配置生产视觉模型后，可进一步返回 OCR、K 线形态、关键价位和图中标注解释。"}
+    received_at = datetime.now(timezone.utc).isoformat()
+
+    def result_for(item: ImageAnalysisItem, index: int) -> dict:
+        name = item.file_name or ("网址" if item.kind == "url" else f"文件 {index + 1}")
+        dimensions = f"（{item.width}×{item.height}）" if item.width and item.height else ""
+        kind_label = "网址" if item.kind == "url" else "文件" if item.kind == "file" else "图片"
+        return {
+            "id": item.id or f"analysis-{index + 1}", "kind": item.kind, "file_name": name,
+            "provider": "demo_vision", "mode": "演示分析", "received": True,
+            "analysis_status": "demo", "received_at": received_at,
+            "title": f"{asset_name} {kind_label}结构已读取",
+            "conclusion": f"已接收 {name}{dimensions}，当前 {asset_name} 研判仍需结合价格、成交量、持仓和事件窗口交叉验证。",
+            "signals": ["识别趋势线、支撑阻力和突破形态", "检查图表周期、合约月份和时间戳", "对照金银比 / 宏观数据确认是否背离"],
+            "next": "当前为演示视觉结果；配置生产视觉模型后，可进一步返回 OCR、K 线形态、关键价位和图中标注解释。",
+        }
+
+    if payload.items:
+        return {"provider": "demo_vision", "mode": "演示分析", "received": True,
+                "analysis_status": "demo", "received_at": received_at, "count": len(payload.items),
+                "items": [result_for(item, index) for index, item in enumerate(payload.items)]}
+
+    return result_for(ImageAnalysisItem(id="", kind=payload.kind, file_name=payload.file_name,
+                                        mime_type=payload.mime_type, size_bytes=payload.size_bytes,
+                                        width=payload.width, height=payload.height, url=payload.url), 0)
 
 @app.get("/api/v1/news/{symbol}")
 async def news(symbol: str, limit: int = Query(default=20, ge=1, le=50)):

@@ -1,10 +1,10 @@
 const MARKET_DEFINITIONS = {
-  gold: { name: '黄金', price: 2654.8, change: 1.28, score: 72, avSymbol: 'GOLD', function: 'GOLD_SILVER_SPOT', historyFunction: 'GOLD_SILVER_HISTORY', mode: 'spot_realtime', source: 'https://www.alphavantage.co/documentation/' },
-  silver: { name: '白银', price: 31.642, change: 0.86, score: 64, avSymbol: 'SILVER', function: 'GOLD_SILVER_SPOT', historyFunction: 'GOLD_SILVER_HISTORY', mode: 'spot_realtime', source: 'https://www.alphavantage.co/documentation/' },
-  copper: { name: '铜', price: 9842.5, change: 0.34, score: 58, avSymbol: 'COPPER', function: 'COPPER', historyFunction: 'COPPER', mode: 'daily_reference', source: 'https://www.alphavantage.co/documentation/' },
-  tin: { name: '锡', price: 256780, change: -0.42, score: 43, avSymbol: 'TIN', function: '', historyFunction: '', mode: 'licensed_delayed_required', source: 'https://www.lme.com/Metals/Non-ferrous/LME-Tin' },
-  crude: { name: '原油', price: 78.42, change: -0.67, score: 47, avSymbol: 'WTI', function: 'WTI', historyFunction: 'WTI', mode: 'daily_reference', source: 'https://www.alphavantage.co/documentation/' },
-  usd: { name: '美元', price: 103.42, change: -0.18, score: 52, avSymbol: 'USD/CNY', function: 'CURRENCY_EXCHANGE_RATE', historyFunction: 'FX_DAILY', mode: 'fx_realtime', source: 'https://www.alphavantage.co/documentation/' },
+  gold: { name: '黄金', price: 2654.8, change: 1.28, score: 72, currency: 'USD', avSymbol: 'GOLD', function: 'GOLD_SILVER_SPOT', historyFunction: 'GOLD_SILVER_HISTORY', mode: 'spot_realtime', source: 'https://www.alphavantage.co/documentation/' },
+  silver: { name: '白银', price: 31.642, change: 0.86, score: 64, currency: 'USD', avSymbol: 'SILVER', function: 'GOLD_SILVER_SPOT', historyFunction: 'GOLD_SILVER_HISTORY', mode: 'spot_realtime', source: 'https://www.alphavantage.co/documentation/' },
+  copper: { name: '铜', price: 9842.5, change: 0.34, score: 58, currency: 'USD', avSymbol: 'COPPER', function: 'COPPER', historyFunction: 'COPPER', mode: 'daily_reference', source: 'https://www.alphavantage.co/documentation/' },
+  tin: { name: '锡', price: 256780, change: -0.42, score: 43, currency: 'USD', avSymbol: 'TIN', function: '', historyFunction: '', mode: 'licensed_delayed_required', source: 'https://www.lme.com/Metals/Non-ferrous/LME-Tin' },
+  crude: { name: '原油', price: 78.42, change: -0.67, score: 47, currency: 'USD', avSymbol: 'WTI', function: 'WTI', historyFunction: 'WTI', mode: 'daily_reference', source: 'https://www.alphavantage.co/documentation/' },
+  usd: { name: '美元', price: 103.42, change: -0.18, score: 52, currency: '指数点', avSymbol: 'USD/CNY', function: 'CURRENCY_EXCHANGE_RATE', historyFunction: 'FX_DAILY', mode: 'fx_realtime', source: 'https://www.alphavantage.co/documentation/' },
 };
 
 const LIVE_MODES = new Set(['spot_realtime', 'fx_realtime']);
@@ -41,6 +41,7 @@ export function demoSnapshot(symbol, overrides = {}) {
     name: item.name,
     price: item.price,
     change_pct: item.change,
+    currency: item.currency,
     bull_bear_score: item.score,
     provider: 'free',
     delayed: true,
@@ -275,6 +276,7 @@ function candleFallback(symbol, interval, overrides = {}) {
     interval,
     provider: overrides.provider || 'demo',
     data_mode: overrides.data_mode || (item.mode === 'licensed_delayed_required' ? item.mode : 'demo_fallback_no_key'),
+    currency: item.currency,
     data_label: overrides.data_label || (item.mode === 'licensed_delayed_required' ? '交易所授权待接入' : '本地演示K线'),
     is_live: false,
     synthetic: true,
@@ -334,6 +336,7 @@ async function fetchAlphaCandles(symbol, interval, env) {
     interval,
     provider: 'alpha_vantage',
     data_mode: item.mode,
+    currency: item.currency,
     data_label: isLive ? `免费${item.mode === 'fx_realtime' ? '外汇' : '现货'}实时 + 历史K线` : item.mode === 'daily_reference' ? '免费日频参考K线' : '免费历史K线',
     is_live: isLive,
     synthetic: parsed.synthetic,

@@ -47,6 +47,7 @@ function normalizeQuote(raw, index) {
     change_pct: numberOrNull(raw?.change_pct ?? raw?.changePercent ?? raw?.涨跌幅),
     volume: numberOrNull(raw?.volume ?? raw?.成交量),
     open_interest: numberOrNull(raw?.open_interest ?? raw?.openInterest ?? raw?.持仓量),
+    currency: 'CNY',
     as_of: textOrNull(raw?.as_of ?? raw?.timestamp ?? raw?.time ?? raw?.更新时间),
   };
 }
