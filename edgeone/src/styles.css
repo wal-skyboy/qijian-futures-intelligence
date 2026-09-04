@@ -1,12 +1,4 @@
-/* Keep the Tailwind import inside the EdgeOne project root so PostCSS can
-   resolve it from edgeone/node_modules in the hosted build. */
-@import 'tailwindcss';
 /* The static EdgeOne entry renders the same page component as the main app.
-   Include the shared base stylesheet here so layout, theme variables, and
-   responsive rules are present in the hosted bundle as well. */
+   Use only project-local CSS imports so the hosted PostCSS pipeline does not
+   need to resolve a package-level CSS import. */
 @import '../../app/globals.css';
-@import '../../app/enhancements.css';
-@import '../../app/round3.css';
-@import '../../app/free-data.css';
-@import '../../app/timestamps.css';
-@import '../../app/week-workbench.css';
