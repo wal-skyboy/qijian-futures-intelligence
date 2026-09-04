@@ -16,7 +16,7 @@
 
 页面现在明确分为两条数据路径：
 
-- **公开版**：国际黄金/白银现货与 USD/CNY 外汇在免费 Provider 明确返回实时值时标为“免费现货实时/免费外汇实时”；国内沪金、沪银、沪铜、沪锡、原油单独通过 `/api/v1/market/domestic-delayed` 展示“官方延时行情”。未配置授权延时接口时只显示“官方延时 · 待接入”和官方来源链接，不显示伪造价格。
+- **公开版**：国际黄金/白银现货与 USD/CNY 外汇在免费 Provider 明确返回实时值时标为“免费现货实时/免费外汇实时”；国内沪金、沪银、沪铜、沪锡、原油单独通过 `/api/v1/public/domestic-delayed` 展示“官方延时行情”。未配置授权延时接口时只显示“官方延时 · 待接入”和官方来源链接，不显示伪造价格。
 - **私有版**：`/api/v1/private/session` 提供 HttpOnly、Secure、8 小时会话；`/api/v1/private/ctp/board` 只向已登录的本人会话返回 CTP Bridge 数据。EdgeOne Pages 函数不能直接维持期货公司 CTP 的 TCP 长连接，因此需在中国大陆自有主机或受信网络部署一个只服务本人的 Bridge，再把 HTTPS 地址填入 `CTP_BRIDGE_URL`。未配置 Bridge 时接口返回“CTP Bridge 未配置”，不会把旧数据标成实时。
 
 公开版和私有版均返回 `data_mode`、`provider`、`as_of`、`delayed`、`source_url`、`note` 等字段；前端以这些字段渲染标签，便于核验和审计。公开页面不接受 CTP 凭据，也不输出私有盘口。
