@@ -12,6 +12,8 @@
 
 默认 `MARKET_PROVIDER=free`：GDELT 新闻（`/api/v1/news/{symbol}`）、FRED 宏观（`/api/v1/macro`）、CFTC COT（`/api/v1/cot/{contract}`）和 Alpha Vantage 市场适配器（`/api/v1/market/{symbol}`）。配置免费 Alpha Vantage Key 后，黄金/白银使用官方文档标注的 live spot，美元使用 USD/CNY 外汇实时汇率，铜与 WTI 使用日频参考；锡仍明确标为需要交易所授权。没有 Key 或 Provider 失败时返回带 `data_mode` 的明确回退状态，绝不把 Demo 数值伪装成实时交易所价格。
 
+实时交易看板下方提供 K 线视图，前端调用同域 `/api/v1/market/candles?symbol={symbol}&interval=daily|weekly|monthly`。EdgeOne 函数优先使用 Alpha Vantage 的 `GOLD_SILVER_HISTORY`、`FX_DAILY`、`WTI`、`COPPER` 历史接口，并在黄金/白银/美元上将最新免费现货/外汇报价标在最后一根；历史源只返回收盘价时，页面会明确写出 OHLC 为结构合成，不把它标成交易所实时期货 K 线。K 线服务端缓存 60 秒，适配免费额度；铜/原油为日频或更低频参考，锡保持“交易所授权待接入”。
+
 配置 `.env`：
 
 ```env
@@ -45,7 +47,7 @@ GDELT 不需 Key；CFTC 公共 PRE 低频访问通常不需 Token；FRED 需要�
 
 在 EdgeOne 项目设置中将“根目录”设为 `/edgeone`，框架预设选“React”，编译命令为 `npm run build`，输出目录为 `build`，安装命令为 `npm install`，Node.js 选 `22.17.1`。保存后在“构建部署”中重新部署 `main` 分支。生产域名 `emcdb.com` 保持现有自定义域名和 CNAME，不需要重新配置 DNS。
 
-EdgeOne Pages 负责静态前端；仓库同时提供 `edgeone/cloud-functions/` 同域 API（`/api/v1/market/board`、`/api/v1/market/{symbol}`、`/api/v1/image-analysis`），部署成功后无需跨域配置，前端默认直接调用当前域名。要启用免费源，在 EdgeOne 项目环境变量增加 `ALPHAVANTAGE_API_KEY`（只放服务端）；未设置时接口仍返回可审计的演示/授权待接入状态，不会伪装成实盘。若使用更完整的 FastAPI 服务，则可继续把 `backend/` 作为独立 API 运行，并在前端环境变量加入 `NEXT_PUBLIC_API_URL=https://你的-api-域名` 后重新部署。现货/外汇源没有可比昨收时，涨跌幅显示为“—”，避免把演示涨跌幅混入实时价格。
+EdgeOne Pages 负责静态前端；仓库同时提供 `edgeone/cloud-functions/` 同域 API（`/api/v1/market/board`、`/api/v1/market/{symbol}`、`/api/v1/market/candles?symbol=...`、`/api/v1/image-analysis`），部署成功后无需跨域配置，前端默认直接调用当前域名。要启用免费源，在 EdgeOne 项目环境变量增加 `ALPHAVANTAGE_API_KEY`（只放服务端）；未设置时接口仍返回可审计的演示/授权待接入状态，不会伪装成实盘。若使用更完整的 FastAPI 服务，则可继续把 `backend/` 作为独立 API 运行，并在前端环境变量加入 `NEXT_PUBLIC_API_URL=https://你的-api-域名` 后重新部署。现货/外汇源没有可比昨收时，涨跌幅显示为“—”，避免把演示涨跌幅混入实时价格。
 
 ## 已实现的质量优化
 

@@ -27,6 +27,13 @@ def test_market_board_sync_contract():
     assert data['sync']['refresh_mode'] == 'polling'
     assert data['sync']['item_count'] == 6
     assert data['sync']['latency_ms'] >= 0
+def test_market_candles_contract():
+    response = client.get('/api/v1/market/gold/candles?interval=daily')
+    data = response.json()
+    assert response.status_code == 200
+    assert data['symbol'] == 'gold' and data['interval'] == 'daily'
+    assert len(data['candles']) >= 30
+    assert all({'time','open','high','low','close'} <= set(row) for row in data['candles'])
 def test_image_analysis_contract():
     response = client.post('/api/v1/image-analysis', json={
         'file_name':'chart.png','mime_type':'image/png','size_bytes':1024,

@@ -1,4 +1,5 @@
 import asyncio
+import math
 from datetime import datetime, timezone
 from time import monotonic
 from pydantic import BaseModel, Field
@@ -88,6 +89,41 @@ async def market(symbol: str):
 async def global_market():
     """Return the currently available cross-market snapshots with honest mode labels."""
     return await _market_board_payload()
+
+@app.get("/api/v1/market/{symbol}/candles")
+async def market_candles(symbol: str, interval: str = Query(default="daily")):
+    """Return a stable OHLC contract for the chart.
+
+    The EdgeOne production adapter enriches this contract with Alpha Vantage
+    history when available. The standalone FastAPI service keeps a labelled
+    deterministic fallback so local/demo deployments never render a blank
+    panel when no history provider is configured.
+    """
+    normalized = interval.lower() if interval.lower() in {"daily", "weekly", "monthly"} else "daily"
+    snapshot = await get_market_provider().snapshot(symbol)
+    base = float(snapshot.get("price") or 1)
+    now = datetime.now(timezone.utc)
+    step_days = {"daily": 1, "weekly": 7, "monthly": 30}[normalized]
+    rows = []
+    previous = base * 0.972
+    for index in range(36):
+        close = base * (0.972 + 0.004 * math.sin(index * 0.63) + (index / 35) * 0.012)
+        open_price = previous
+        spread = max(abs(close) * 0.004, 0.0001)
+        rows.append({"time": (now.timestamp() - (35 - index) * step_days * 86400),
+                     "open": open_price, "high": max(open_price, close) + spread,
+                     "low": max(0, min(open_price, close) - spread), "close": close})
+        previous = close
+    for row in rows:
+        row["time"] = datetime.fromtimestamp(row["time"], timezone.utc).isoformat()
+    live_mode = snapshot.get("data_mode") in {"spot_realtime", "fx_realtime"}
+    return {"symbol": symbol, "name": snapshot.get("name", symbol), "interval": normalized,
+            "provider": snapshot.get("provider", "demo"), "data_mode": snapshot.get("data_mode", "demo_fallback"),
+            "data_label": "实时报价 + 本地历史演示K线" if live_mode else "本地演示K线",
+            "is_live": live_mode, "synthetic": True, "as_of": snapshot.get("as_of"),
+            "source_url": snapshot.get("source_url"), "freshness": snapshot.get("freshness", "演示数据"),
+            "note": "本地 FastAPI 未启用历史 OHLC Provider，当前 K 线为结构演示；不代表交易所实时 OHLC。",
+            "candles": rows}
 
 @app.get("/api/v1/strategy/{symbol}")
 async def strategy(symbol: str):
