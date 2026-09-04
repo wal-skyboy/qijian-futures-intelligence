@@ -3,5 +3,11 @@
   "buildCommand": "npm run build",
   "installCommand": "npm install",
   "outputDirectory": "build",
-  "nodeVersion": "22.17.1"
+  "nodeVersion": "22.17.1",
+  "cloudFunctions": {
+    "mainlandRegions": ["ap-shanghai"],
+    "nodejs": {
+      "maxDuration": 30
+    }
+  }
 }
