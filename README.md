@@ -16,7 +16,7 @@
 
 页面现在明确分为两条数据路径：
 
-- **公开版**：国际黄金/白银现货与 USD/CNY 外汇在免费 Provider 明确返回实时值时标为“免费现货实时/免费外汇实时”；国内沪金、沪银、沪铜、沪锡、原油单独通过 `/api/v1/public/domestic-delayed` 展示“官方延时行情”。未配置授权延时接口时只显示“官方延时 · 待接入”和官方来源链接，不显示伪造价格。
+- **公开版**：国际黄金/白银现货与 USD/CNY 外汇在免费 Provider 明确返回实时值时标为“免费现货实时/免费外汇实时”；国内沪金、沪银、沪铜、沪锡、原油单独通过 `/api/v1/public/domestic-delayed` 读取上期所官网公开延时 JSON，展示“官方延时行情”。该源无 API Key、约 60 秒刷新，字段包含合约、最新价、涨跌、开高低、成交量、持仓、买卖一档（以官网实际返回为准）。若配置了授权分销商 URL，则覆盖默认官网源并标注为授权 Provider；任何情况下都不把延时数据标为实时。
 - **私有版**：`/api/v1/private/session` 提供 HttpOnly、Secure、8 小时会话；`/api/v1/private/ctp/board` 只向已登录的本人会话返回 CTP Bridge 数据。EdgeOne Pages 函数不能直接维持期货公司 CTP 的 TCP 长连接，因此需在中国大陆自有主机或受信网络部署一个只服务本人的 Bridge，再把 HTTPS 地址填入 `CTP_BRIDGE_URL`。未配置 Bridge 时接口返回“CTP Bridge 未配置”，不会把旧数据标成实时。
 
 公开版和私有版均返回 `data_mode`、`provider`、`as_of`、`delayed`、`source_url`、`note` 等字段；前端以这些字段渲染标签，便于核验和审计。公开页面不接受 CTP 凭据，也不输出私有盘口。
@@ -46,7 +46,7 @@ GDELT 不需 Key；CFTC 公共 PRE 低频访问通常不需 Token；FRED 需要�
 
 “实时”只对 Provider 明确支持的现货或外汇报价使用；交易所级期货 Tick、盘口和公开再分发通常需要 CME、LME、SHFE 等交易所或其授权分销商许可。页面会同时显示 `data_mode`、来源和时间戳，便于审计。
 
-国内期货延时适配器约定：`DOMESTIC_DELAYED_URL` 返回 JSON 数组或 `{items:[...]}`，每行至少包含 `symbol`（`au/ag/cu/sn/sc` 之一）、`price`、`change_pct`、`as_of`；可选 `contract`、`high`、`low`、`open`、`volume`、`open_interest`、`source_url`。服务端会白名单归一化字段，并将其标为 `official_delayed`。请只接入交易所或授权分销商允许公开展示的延时数据。
+国内期货延时适配器默认读取上期所公开文件：`https://www.shfe.com.cn/data/tradedata/future/delaymarket/delaymarket_all.dat`，通过 `params` 时间戳参数避免缓存；官网延时说明页为 `https://www.shfe.com.cn/reports/marketdata/delayedquotes/`。该文件是公开、无密钥、延时行情，不含交易所实时 Tick、Level-2 或自动下单权限。服务端按 `instrumentid` 分组，并按持仓量优先选取主力参考合约，白名单归一化 `lastprice`、`upperdown`、`presettlementprice`、`updatetime`、`highprice`、`lowerprice`、`openprice`、`volume`、`openinterest`、`bidprice`、`askprice` 等字段。若接入交易所或授权分销商的 JSON，可设置 `DOMESTIC_DELAYED_URL`（及可选 `DOMESTIC_DELAYED_TOKEN`/`SHFE_DELAYED_API_KEY`）覆盖默认源；每行至少包含 `symbol`（`au/ag/cu/sn/sc` 之一）、`price`、`change_pct`、`as_of`。请只接入允许公开展示的延时数据。
 
 CTP Bridge 约定：`CTP_BRIDGE_URL` 返回 `{items:[{symbol,name,contract,last,bid,ask,change_pct,volume,open_interest,as_of}],as_of,latency_ms}`；可用 `CTP_BRIDGE_TOKEN` 做服务端 Bearer 校验。Bridge 应自行使用期货公司提供的 CTP SDK/柜台连接，平台只接收已归一化的行情，不保存交易密码、不提供自动下单。
 
