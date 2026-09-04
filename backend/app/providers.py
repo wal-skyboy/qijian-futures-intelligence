@@ -96,8 +96,10 @@ class FreeMarketProvider(MarketProvider):
             value.update({"name": name, "price": price, "provider": "alpha_vantage",
                           "data_mode": freshness, "source_url": source_url,
                           "freshness": freshness, "as_of": as_of or datetime.now(timezone.utc).isoformat()})
-            if change_pct is not None:
-                value["change_pct"] = change_pct
+            # Spot and FX endpoints do not always include a comparable prior
+            # close. Preserve null instead of leaking the demo percentage into
+            # a live price card; daily commodity series provide a real delta.
+            value["change_pct"] = change_pct
             return value
         except (httpx.HTTPError, ValueError, TypeError):
             value = await DemoProvider().snapshot(symbol)

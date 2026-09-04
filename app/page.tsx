@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 type Asset = '黄金' | '白银' | '铜' | '锡' | '原油' | '美元' | '大豆' | '玉米' | '螺纹钢';
 type Event = { id:number; asset:Asset; side:'利多'|'利空'; title:string; summary:string; source:string; sourceUrl:string; publishedAt:string; time:string; impact:number; confidence:number; tags:string[] };
-type Snapshot = { symbol?:string; name?:string; price:number; change_pct:number; provider:string; data_mode:string; delayed?:boolean; as_of?:string; source_url?:string; freshness?:string };
+type Snapshot = { symbol?:string; name?:string; price:number; change_pct?:number|null; provider:string; data_mode:string; delayed?:boolean; as_of?:string; source_url?:string; freshness?:string };
 type WeekEvent = { id:number; date:string; window:'过去7天'|'未来7天'; side:'利多'|'利空'|'中性'; impact:'高'|'中'; title:string; assets:string; why:string; source:string; sourceUrl:string };
 type ImageMeta = { file_name:string; mime_type:string; size_bytes:number; width:number; height:number };
 type ImageAnalysis = { provider:string; mode:string; title:string; conclusion:string; signals:string[]; next:string };
@@ -127,9 +127,9 @@ export default function Home(){
  useEffect(()=>{let cancelled=false; const apiBase=process.env.NEXT_PUBLIC_API_URL||''; setSnapshot(null); fetch(`${apiBase}/api/v1/market/${currentSymbol}`).then(r=>{if(!r.ok)throw new Error('market');return r.json()}).then((payload:Snapshot)=>{if(!cancelled){setSnapshot(payload);setDataStatus(snapshotLabel(payload))}}).catch(()=>{if(!cancelled)setDataStatus('静态演示（API 未连接）')}); return()=>{cancelled=true}},[currentSymbol,refreshTick]);
  useEffect(()=>{let cancelled=false; const apiBase=process.env.NEXT_PUBLIC_API_URL||''; fetch(`${apiBase}/api/v1/market/global`).then(r=>{if(!r.ok)throw new Error('global');return r.json()}).then(payload=>{if(!cancelled)setGlobalQuotes(Array.isArray(payload.items)?payload.items:[])}).catch(()=>{if(!cancelled)setGlobalQuotes([])}); return()=>{cancelled=true}},[refreshTick]);
  const activeSnapshot=snapshot?.symbol===currentSymbol?snapshot:null;
- const active={price:activeSnapshot?.price?.toLocaleString('en-US',{maximumFractionDigits:3})||assets[asset].price,change:activeSnapshot?.change_pct!==undefined?`${activeSnapshot.change_pct>=0?'+':''}${activeSnapshot.change_pct.toFixed(2)}%`:assets[asset].change};
+ const active={price:activeSnapshot?.price?.toLocaleString('en-US',{maximumFractionDigits:3})||assets[asset].price,change:typeof activeSnapshot?.change_pct==='number'?`${activeSnapshot.change_pct>=0?'+':''}${activeSnapshot.change_pct.toFixed(2)}%`:'—'};
  const liveQuote=(name:Asset)=>globalQuotes.find(q=>q.symbol===symbolMap[name]);
- const quoteChange=(name:Asset)=>{const q=liveQuote(name); return q?.change_pct!==undefined?`${q.change_pct>=0?'+':''}${q.change_pct.toFixed(2)}%`:assets[name].change};
+ const quoteChange=(name:Asset)=>{const q=liveQuote(name); return typeof q?.change_pct==='number'?`${q.change_pct>=0?'+':''}${q.change_pct.toFixed(2)}%`:'—';};
  const currentPlan=currentPlans[asset];
  const currentCalendar=calendarForAsset(asset);
  const goldQuote=globalQuotes.find(q=>q.symbol==='gold')?.price||2654.8; const silverQuote=globalQuotes.find(q=>q.symbol==='silver')?.price||31.642; const goldSilverRatio=goldQuote/silverQuote; const ratioTone=goldSilverRatio>=85?'白银相对偏弱':goldSilverRatio<=75?'白银相对强势':'中性偏高'; const ratioAction=goldSilverRatio>=85?'黄金防守、白银等待比值回落再加仓':goldSilverRatio<=75?'白银弹性占优，黄金仓位需防相对落后':'等待比值确认方向，控制白银追涨仓位';

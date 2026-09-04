@@ -45,7 +45,7 @@ GDELT 不需 Key；CFTC 公共 PRE 低频访问通常不需 Token；FRED 需要�
 
 在 EdgeOne 项目设置中将“根目录”设为 `/edgeone`，框架预设选“React”，编译命令为 `npm run build`，输出目录为 `build`，安装命令为 `npm install`，Node.js 选 `22.17.1`。保存后在“构建部署”中重新部署 `main` 分支。生产域名 `emcdb.com` 保持现有自定义域名和 CNAME，不需要重新配置 DNS。
 
-EdgeOne Pages 负责静态前端；要让页面显示免费 Provider 数据，还需把 `backend/` 作为独立 API 服务运行（例如同一台云服务器的 Docker Compose），并在 EdgeOne 项目环境变量加入 `NEXT_PUBLIC_API_URL=https://你的-api-域名` 后重新部署。API 服务端 `.env` 设置 `MARKET_PROVIDER=free` 与 `ALPHAVANTAGE_API_KEY`，密钥只放服务端；若不设置该变量，页面会保留演示值并明确标注“待配置 Key”，不会伪装成实盘。
+EdgeOne Pages 负责静态前端；要让页面显示免费 Provider 数据，还需把 `backend/` 作为独立 API 服务运行（例如同一台云服务器的 Docker Compose），并在 EdgeOne 项目环境变量加入 `NEXT_PUBLIC_API_URL=https://你的-api-域名` 后重新部署。API 服务端 `.env` 设置 `MARKET_PROVIDER=free` 与 `ALPHAVANTAGE_API_KEY`，密钥只放服务端；若不设置该变量，页面会保留演示值并明确标注“待配置 Key”，不会伪装成实盘。现货/外汇源没有可比昨收时，涨跌幅显示为“—”，避免把演示涨跌幅混入实时价格。
 
 ## 已实现的质量优化
 
