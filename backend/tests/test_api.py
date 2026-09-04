@@ -15,8 +15,8 @@ def test_change_types():
     assert {'added','sentiment_changed','strategy_adjusted'} <= types
 def test_global_market_and_strategy():
     global_data = client.get('/api/v1/market/global').json()
-    assert len(global_data['items']) == 3
-    assert {'gold','silver','tin'} <= {item['symbol'] for item in global_data['items']}
+    assert len(global_data['items']) == 6
+    assert {'gold','silver','copper','tin','crude','usd'} <= {item['symbol'] for item in global_data['items']}
     plan = client.get('/api/v1/strategy/gold').json()
     assert plan['bias'] in {'偏多','偏空','中性'} and 0 <= plan['score'] <= 100
 def test_image_analysis_contract():
@@ -26,3 +26,9 @@ def test_image_analysis_contract():
     data = response.json()
     assert response.status_code == 200 and data['provider'] == 'demo_vision'
     assert data['signals'] and 'silver' not in data['title'].lower()
+
+def test_focus_market_search_and_modes():
+    names = {item['name'] for item in client.get('/api/v1/search?q=美').json()}
+    assert '美元' in names
+    usd = client.get('/api/v1/market/usd').json()
+    assert usd['data_mode'] in {'demo_fallback_no_key', 'fx_realtime', 'fallback_provider_error'}

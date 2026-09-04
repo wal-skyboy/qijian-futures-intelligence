@@ -20,26 +20,30 @@ class ImageAnalysisRequest(BaseModel):
 async def health():
     return {"status": "ok", "market_provider": settings.market_provider,
             "news_provider": settings.news_provider, "mode": settings.app_env,
-            "free_sources": ["gdelt", "fred", "cftc", "spot_or_delayed"]}
+            "free_sources": ["gdelt", "fred", "cftc", "alpha_vantage_spot", "alpha_vantage_fx", "alpha_vantage_daily"],
+            "market_freshness": {"gold": "spot_realtime", "silver": "spot_realtime", "usd": "fx_realtime",
+                                 "copper": "daily_reference", "crude": "daily_reference", "tin": "licensed_delayed_required"}}
 
 @app.get("/api/v1/market/{symbol}")
 async def market(symbol: str):
     # Keep this compatibility guard because FastAPI resolves the parameterized
     # route before the more specific /market/global declaration below.
     if symbol == "global":
-        rows = await asyncio.gather(*(get_market_provider().snapshot(item) for item in ("gold", "silver", "tin")))
+        rows = await asyncio.gather(*(get_market_provider().snapshot(item) for item in ("gold", "silver", "copper", "tin", "crude", "usd")))
         return {"items": rows, "as_of": rows[0].get("as_of") if rows else None}
     return await get_market_provider().snapshot(symbol)
 
 @app.get("/api/v1/market/global")
 async def global_market():
     """Return the currently available cross-market snapshots with honest mode labels."""
-    symbols = ["gold", "silver", "tin"]
+    symbols = ["gold", "silver", "copper", "tin", "crude", "usd"]
     rows = await asyncio.gather(*(get_market_provider().snapshot(symbol) for symbol in symbols))
     return {"items": rows, "as_of": rows[0].get("as_of") if rows else None,
             "coverage": [
-                {"name": "COMEX 黄金 / 白银", "mode": "spot_or_delayed", "source_url": "https://www.alphavantage.co/documentation/"},
-                {"name": "LME 锡", "mode": "licensed_delayed", "source_url": "https://www.lme.com/Metals/Non-ferrous/LME-Tin"},
+                {"name": "黄金 / 白银现货", "mode": "spot_realtime", "source_url": "https://www.alphavantage.co/documentation/"},
+                {"name": "美元 USD/CNY", "mode": "fx_realtime", "source_url": "https://www.alphavantage.co/documentation/"},
+                {"name": "铜 / WTI 原油", "mode": "daily_reference", "source_url": "https://www.alphavantage.co/documentation/"},
+                {"name": "LME 锡", "mode": "licensed_delayed_required", "source_url": "https://www.lme.com/Metals/Non-ferrous/LME-Tin"},
                 {"name": "CFTC COT", "mode": "weekly", "source_url": "https://publicreporting.cftc.gov/stories/s/r4w3-av2u"},
                 {"name": "FRED 宏观", "mode": "daily", "source_url": "https://fred.stlouisfed.org/docs/api/fred/"},
             ]}
@@ -64,7 +68,7 @@ async def image_analysis(payload: ImageAnalysisRequest):
     production vision provider can replace this function without changing the
     upload UI or response shape.
     """
-    asset_name = {"gold": "黄金", "silver": "白银", "tin": "锡"}.get(payload.asset, payload.asset)
+    asset_name = {"gold": "黄金", "silver": "白银", "copper": "铜", "tin": "锡", "crude": "原油", "usd": "美元"}.get(payload.asset, payload.asset)
     return {"provider": "demo_vision", "mode": "演示分析",
             "title": f"{asset_name} 图片结构已读取",
             "conclusion": f"已接收 {payload.file_name}（{payload.width}×{payload.height}），当前 {asset_name} 研判仍需结合价格、成交量、持仓和事件窗口交叉验证。",
@@ -83,8 +87,9 @@ async def cot(contract: str): return await FreeCOTProvider().latest(contract)
 
 @app.get("/api/v1/search")
 async def search(q: str = Query(min_length=1, max_length=40)):
-    all_assets = [{"symbol":"gold","name":"黄金"},{"symbol":"silver","name":"白银"},{"symbol":"tin","name":"锡"},
-                  {"symbol":"copper","name":"铜"},{"symbol":"crude","name":"原油"},{"symbol":"soybean","name":"大豆"},
+    all_assets = [{"symbol":"gold","name":"黄金"},{"symbol":"silver","name":"白银"},
+                  {"symbol":"copper","name":"铜"},{"symbol":"tin","name":"锡"},{"symbol":"crude","name":"原油"},
+                  {"symbol":"usd","name":"美元"},{"symbol":"soybean","name":"大豆"},
                   {"symbol":"corn","name":"玉米"},{"symbol":"rebar","name":"螺纹钢"}]
     query = q.lower()
     return [x for x in all_assets if query in x["symbol"] or q in x["name"]][:8]

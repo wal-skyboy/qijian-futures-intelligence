@@ -1,8 +1,8 @@
 # 期鉴 · 期货情报与策略平台
 
-中文专业交易终端风格的可部署 MVP。前端为 React/TypeScript，API 为 FastAPI；默认 Demo Provider 无需密钥即可展示黄金、白银、锡的资讯研判、变化追踪与七日策略。
+中文专业交易终端风格的可部署 MVP。前端为 React/TypeScript，API 为 FastAPI；重点品种固定为黄金、白银、铜、锡、原油、美元，其他已支持品种可在顶部搜索后复用同一套资讯、风险与策略视图。
 
-顶部品种搜索支持黄金、白银、锡、铜、原油、大豆、玉米和螺纹钢；切换品种后，行情、事件、利多/利空、日历、风险、策略和图片分析上下文会同步切换。未接入专属资讯流的品种会显示明确的通用模板与 Provider 待接入状态。
+顶部品种搜索支持黄金、白银、铜、锡、原油、美元、大豆、玉米和螺纹钢；切换品种后，行情、事件、利多/利空、日历、风险、策略和图片分析上下文会同步切换。侧栏和跨品种速览只展示前六个重点品种，其他品种通过搜索进入，未接入专属资讯流的品种会显示明确的通用模板与 Provider 待接入状态。
 
 ## 本地运行
 
@@ -10,7 +10,7 @@
 
 ## 免费数据组合（当前默认）
 
-默认 `MARKET_PROVIDER=free`：GDELT 新闻（`/api/v1/news/{symbol}`）、FRED 宏观（`/api/v1/macro`）、CFTC COT（`/api/v1/cot/{contract}`）和 Alpha Vantage 黄金/白银现货（`/api/v1/market/{symbol}`）。没有 Alpha Vantage/FRED Key 时会返回带 `data_mode` 的明确回退状态，绝不把 Demo 数值伪装成实时交易所价格。
+默认 `MARKET_PROVIDER=free`：GDELT 新闻（`/api/v1/news/{symbol}`）、FRED 宏观（`/api/v1/macro`）、CFTC COT（`/api/v1/cot/{contract}`）和 Alpha Vantage 市场适配器（`/api/v1/market/{symbol}`）。配置免费 Alpha Vantage Key 后，黄金/白银使用官方文档标注的 live spot，美元使用 USD/CNY 外汇实时汇率，铜与 WTI 使用日频参考；锡仍明确标为需要交易所授权。没有 Key 或 Provider 失败时返回带 `data_mode` 的明确回退状态，绝不把 Demo 数值伪装成实时交易所价格。
 
 配置 `.env`：
 
@@ -25,6 +25,8 @@ VISION_API_KEY=
 ```
 
 GDELT 不需 Key；CFTC 公共 PRE 低频访问通常不需 Token；FRED 需要免费账户 Key；Alpha Vantage 免费 Key 适合低频现货/历史查询。免费组合适合个人研究、延迟行情和资讯筛选，不提供 CME/COMEX/LME 的无限制实时 Tick、盘口或商业新闻再分发授权。生产公开服务前仍需核对各来源条款，并在需要时替换为持牌行情 Provider。
+
+“实时”只对 Provider 明确支持的现货或外汇报价使用；交易所级期货 Tick、盘口和公开再分发通常需要 CME、LME、SHFE 等交易所或其授权分销商许可。页面会同时显示 `data_mode`、来源和时间戳，便于审计。
 
 ## 金银比与图片辅助分析
 
@@ -42,6 +44,8 @@ GDELT 不需 Key；CFTC 公共 PRE 低频访问通常不需 Token；FRED 需要�
 仓库内的 `edgeone/` 是专为 EdgeOne Pages 准备的纯 React/Vite 静态入口。这样可以避免平台把包含 Vinext/Next 开发文件的根目录误判为 OpenNext 全栈项目。
 
 在 EdgeOne 项目设置中将“根目录”设为 `/edgeone`，框架预设选“React”，编译命令为 `npm run build`，输出目录为 `build`，安装命令为 `npm install`，Node.js 选 `22.17.1`。保存后在“构建部署”中重新部署 `main` 分支。生产域名 `emcdb.com` 保持现有自定义域名和 CNAME，不需要重新配置 DNS。
+
+EdgeOne Pages 负责静态前端；要让页面显示免费 Provider 数据，还需把 `backend/` 作为独立 API 服务运行（例如同一台云服务器的 Docker Compose），并在 EdgeOne 项目环境变量加入 `NEXT_PUBLIC_API_URL=https://你的-api-域名` 后重新部署。API 服务端 `.env` 设置 `MARKET_PROVIDER=free` 与 `ALPHAVANTAGE_API_KEY`，密钥只放服务端；若不设置该变量，页面会保留演示值并明确标注“待配置 Key”，不会伪装成实盘。
 
 ## 已实现的质量优化
 
