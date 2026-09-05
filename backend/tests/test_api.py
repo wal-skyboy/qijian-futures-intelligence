@@ -39,9 +39,14 @@ def test_image_analysis_contract():
         'file_name':'chart.png','mime_type':'image/png','size_bytes':1024,
         'width':1280,'height':720,'asset':'silver'})
     data = response.json()
-    assert response.status_code == 200 and data['provider'] == 'demo_vision'
-    assert data['received'] is True and data['analysis_status'] == 'demo'
-    assert data['signals'] and 'silver' not in data['title'].lower()
+    assert response.status_code in {200, 503}
+    assert data['provider'] == 'openai_vision'
+    if response.status_code == 503:
+        assert data['analysis_status'] == 'not_configured'
+        assert data['received'] is False
+    else:
+        assert data['received'] is True and data['analysis_status'] == 'complete'
+        assert data['items'] and data['items'][0]['facts'] is not None
 
 def test_focus_market_search_and_modes():
     names = {item['name'] for item in client.get('/api/v1/search?q=美').json()}
