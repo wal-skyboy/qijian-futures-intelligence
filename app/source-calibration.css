@@ -1,0 +1,32 @@
+.china-sources{margin-top:18px;overflow:hidden}
+.china-policy{display:flex;flex-wrap:wrap;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line);font-size:9px;color:var(--muted)}
+.china-policy span:first-child{color:var(--amber)}
+.china-source-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:12px 16px}
+.china-source-card{min-width:0;padding:11px 12px;border:1px solid var(--line);border-radius:5px;background:rgba(127,135,145,.04)}
+.china-source-card>div{display:flex;align-items:center;gap:8px;min-width:0}
+.china-source-card>div:first-child b{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.china-source-card small{display:block;min-height:28px;margin:7px 0;color:var(--muted);font-size:8px;line-height:1.6}
+.china-source-card>div:last-child{justify-content:space-between;font-size:8px;color:var(--muted)}
+.china-source-card a{color:var(--amber);text-decoration:none;white-space:nowrap}
+.china-source-status{display:inline-flex;align-items:center;gap:4px;font-size:8px;white-space:nowrap}
+.china-source-status i{width:5px;height:5px;border-radius:50%;background:var(--muted)}
+.china-source-status.ok{color:var(--green)}.china-source-status.ok i{background:var(--green);box-shadow:0 0 7px var(--green)}
+.china-source-status.not_configured,.china-source-status.empty{color:var(--amber)}.china-source-status.not_configured i,.china-source-status.empty i{background:var(--amber)}
+.china-source-status.provider_error{color:var(--red)}.china-source-status.provider_error i{background:var(--red)}
+.china-table-wrap{margin:0 16px 12px;border:1px solid var(--line);border-radius:5px;overflow:auto}
+.china-table{width:100%;min-width:720px;border-collapse:collapse;font-size:9px}
+.china-table th{padding:9px 10px;text-align:left;color:var(--muted);font-weight:500;background:rgba(127,135,145,.05);white-space:nowrap}
+.china-table td{padding:10px;border-top:1px solid var(--line);color:var(--text);vertical-align:middle;white-space:nowrap}
+.china-table td:first-child b,.china-table td:first-child small{display:block}.china-table td:first-child small{margin-top:3px;color:var(--muted);font-size:8px}
+.china-table td:nth-child(2){font-family:Georgia,serif;font-size:13px;color:var(--amber)}
+.china-table td:nth-child(4){font-family:monospace}.china-table td:nth-child(6){color:var(--muted);font-size:8px}
+.china-table td:nth-child(5) small{display:block;margin-top:3px;color:var(--muted);font-size:8px}
+.china-agreement{display:inline-block;padding:3px 6px;border-radius:3px;font-size:8px}.china-agreement.good{color:var(--green);background:rgba(21,149,111,.12)}.china-agreement.warn{color:var(--amber);background:rgba(217,155,56,.12)}.china-agreement.bad{color:var(--red);background:rgba(220,91,91,.12)}
+.china-empty{padding:18px;text-align:center;color:var(--muted);font-size:9px}
+.china-strategy{margin:0 16px 13px;border:1px solid rgba(217,155,56,.35);border-radius:5px;background:linear-gradient(120deg,rgba(217,155,56,.07),transparent 45%)}
+.china-strategy-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.china-strategy-head>div{display:flex;align-items:center;gap:10px;min-width:0}.china-strategy-head span{font-size:10px;color:var(--muted)}.china-strategy-head strong{font-size:13px;color:var(--amber)}.china-strategy-head small{color:var(--muted);font-size:8px;white-space:nowrap}
+.china-strategy-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0}.china-strategy-grid>div{padding:11px 14px;border-right:1px solid var(--line);min-width:0}.china-strategy-grid>div:last-child{border-right:0}.china-strategy-grid b{font-size:9px;color:var(--muted);font-weight:500}.china-strategy-grid p{margin:6px 0 0;font-size:9px;line-height:1.65;color:var(--text)}
+.china-strategy-sources{padding:9px 14px;border-top:1px solid var(--line);font-size:8px;color:var(--muted);overflow-wrap:anywhere}.china-error{margin:0 16px 10px;padding:8px 10px;border:1px solid rgba(217,155,56,.35);border-radius:4px;color:var(--amber);font-size:8px}.china-foot{padding:0 16px 14px;color:var(--muted);font-size:8px;line-height:1.6}
+@media(max-width:1000px){.china-source-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.china-strategy-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.china-strategy-grid>div:nth-child(2){border-right:0}.china-strategy-grid>div:nth-child(-n+2){border-bottom:1px solid var(--line)}}
+@media(max-width:700px){.china-source-grid{grid-template-columns:1fr;padding:10px 12px}.china-table-wrap{margin-left:12px;margin-right:12px}.china-strategy{margin-left:12px;margin-right:12px}.china-strategy-head{align-items:flex-start;flex-direction:column}.china-strategy-grid{grid-template-columns:1fr}.china-strategy-grid>div{border-right:0;border-bottom:1px solid var(--line)}.china-strategy-grid>div:last-child{border-bottom:0}.china-foot{padding-left:12px;padding-right:12px}}

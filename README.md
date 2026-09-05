@@ -53,6 +53,30 @@ GDELT 不需 Key；CFTC 公共 PRE 低频访问通常不需 Token；FRED 需要�
 
 CTP Bridge 约定：`CTP_BRIDGE_URL` 返回 `{items:[{symbol,name,contract,last,bid,ask,change_pct,volume,open_interest,as_of}],as_of,latency_ms}`；可用 `CTP_BRIDGE_TOKEN` 做服务端 Bearer 校验。Bridge 应自行使用期货公司提供的 CTP SDK/柜台连接，平台只接收已归一化的行情，不保存交易密码、不提供自动下单。
 
+### 同花顺 iFinD × 东方财富 Choice 多源校准
+
+页面的“同花顺 × Choice”区块通过 `/api/v1/sources/china` 汇总国内五个重点合约（沪金、沪银、沪铜、沪锡、上海原油）的授权行情和资讯，并与上期所官方延时基准核对。适配器只接受官方 API 或用户明确配置的 HTTPS JSON/RSS Feed；不抓取网页 HTML、Cookie、登录态，也不逆向终端协议。
+
+EdgeOne 环境变量（全部只放服务端）：
+
+```env
+THS_IFIND_ACCESS_TOKEN=
+THS_IFIND_API_URL=
+THS_CONTRACT_CODES={"au":"AU.SHF","ag":"AG.SHF","cu":"CU.SHF","sn":"SN.SHF","sc":"SC.INE"}
+THS_NEWS_FEED_URL=
+EASTMONEY_CHOICE_TOKEN=
+EASTMONEY_CHOICE_API_URL=
+EASTMONEY_CONTRACT_CODES=
+EASTMONEY_NEWS_FEED_URL=
+CHINA_SOURCE_TIMEOUT_MS=8000
+```
+
+`THS_IFIND_ACCESS_TOKEN` 使用同花顺 iFinD 官方账号生成的访问令牌；官方接口的实时行情地址、请求头和字段说明见 [iFinD API 手册](https://quantapi.51ifind.com/gwstatic/static/ds_web/quantapi-web/help-center/manual.html)，免费账户额度见 [iFinD 权限说明](https://quantapi.51ifind.com/gwstatic/static/ds_web/quantapi-web/help-center/permission.html)。东方财富的 Choice API 地址和权限由 Choice 产品提供，因此代码不会猜测或硬编码一个未公开的 REST 地址；将 Choice 控制台/合同中给出的 HTTPS API 地址填入 `EASTMONEY_CHOICE_API_URL`，令牌填入 `EASTMONEY_CHOICE_TOKEN`。可参考 [Choice 数据服务](https://choice.eastmoney.com/product/datacenter) 与 [Choice 量化接口入口](https://quantapi.eastmoney.com/)。
+
+适配器会保留每个来源的合约、价格、时间戳和数据标签，并按来源中位价计算校准值：至少两个来源且价差不超过 0.5% 才显示“可用于研究校准”；否则显示“单源待核对/差异需复核”，不合成交易价。资讯按标题和原文链接去重，策略卡只输出“条件偏多/条件偏空/等待确认”、触发条件、失效条件和仓位边界；“证据置信度”不是胜率，也不构成投资建议。
+
+请先核对并遵守 [Choice 用户协议](https://choice.eastmoney.com/html/userprotocol/userprotocol.html) 及 iFinD/数据供应商的授权和再分发条款；协议未允许的网页爬取、批量转载、反向工程或自动下单不会由本项目启用。
+
 ### 私人版完整接入流程
 
 私人版默认关闭，只有完成下面的配置后才会向当前浏览器会话返回本人行情。整个流程不需要把期货账户密码放进网页或 EdgeOne。
