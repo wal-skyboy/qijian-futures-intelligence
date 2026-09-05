@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import json
 import math
 import re
 from datetime import datetime, timezone
@@ -7,7 +8,9 @@ from time import monotonic
 from zoneinfo import ZoneInfo
 from pydantic import BaseModel, Field
 from fastapi import FastAPI, Query
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+import httpx
 from .config import settings
 from .providers import FreeCOTProvider, FreeMacroProvider, FreeNewsProvider, get_market_provider
 
@@ -103,6 +106,8 @@ class ImageAnalysisItem(BaseModel):
     width: int | None = Field(default=None, ge=0, le=20000)
     height: int | None = Field(default=None, ge=0, le=20000)
     url: str | None = Field(default=None, max_length=2048)
+    data_url: str | None = Field(default=None, max_length=40_000_000)
+    file_data: str | None = Field(default=None, max_length=40_000_000)
 
 class ImageAnalysisRequest(BaseModel):
     file_name: str = Field(default="image", max_length=160)
@@ -113,6 +118,8 @@ class ImageAnalysisRequest(BaseModel):
     asset: str = Field(default="gold", max_length=20)
     kind: str = Field(default="image", max_length=16)
     url: str | None = Field(default=None, max_length=2048)
+    data_url: str | None = Field(default=None, max_length=40_000_000)
+    file_data: str | None = Field(default=None, max_length=40_000_000)
     items: list[ImageAnalysisItem] = Field(default_factory=list, max_length=6)
 
 async def _market_board_payload() -> dict:
@@ -228,39 +235,148 @@ async def strategy(symbol: str):
             "invalid": "价格跌破结构支撑或数据与价格出现明显背离",
             "as_of": snapshot.get("as_of")}
 
+VISION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "index": {"type": "integer"},
+                    "file_name": {"type": "string"},
+                    "title": {"type": "string"},
+                    "conclusion": {"type": "string"},
+                    "facts": {"type": "array", "items": {"type": "string"}},
+                    "signals": {"type": "array", "items": {"type": "string"}},
+                    "scenarios": {"type": "array", "items": {"type": "string"}},
+                    "risks": {"type": "array", "items": {"type": "string"}},
+                    "missing_data": {"type": "array", "items": {"type": "string"}},
+                    "confidence": {"type": "number"},
+                    "next": {"type": "string"},
+                },
+                "required": ["index", "file_name", "title", "conclusion", "facts", "signals", "scenarios", "risks", "missing_data", "confidence", "next"],
+            },
+        },
+    },
+    "required": ["items"],
+}
+
+def _vision_text(value: object, fallback: str = "") -> str:
+    return value.strip() if isinstance(value, str) and value.strip() else fallback
+
+def _vision_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item.strip() for item in value if isinstance(item, str) and item.strip()][:12]
+
+def _vision_output_text(payload: dict) -> str:
+    if isinstance(payload.get("output_text"), str):
+        return payload["output_text"]
+    return "\n".join(
+        part.get("text", "")
+        for message in payload.get("output", [])
+        for part in message.get("content", [])
+        if isinstance(part, dict) and isinstance(part.get("text"), str)
+    )
+
+def _vision_parse_json(text: str) -> dict:
+    cleaned = text.strip()
+    fence = chr(96) * 3
+    if cleaned.startswith(fence):
+        cleaned = re.sub(r"^" + re.escape(fence) + r"(?:json)?\s*", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*" + re.escape(fence) + r"$", "", cleaned)
+    try:
+        parsed = json.loads(cleaned)
+    except (TypeError, ValueError):
+        start, end = cleaned.find("{"), cleaned.rfind("}")
+        if start < 0 or end <= start:
+            raise ValueError("视觉模型返回的结果不是有效 JSON")
+        parsed = json.loads(cleaned[start:end + 1])
+    if not isinstance(parsed, dict):
+        raise ValueError("视觉模型返回的结果格式无效")
+    return parsed
+
+def _vision_prompt(asset_name: str, items: list[ImageAnalysisItem]) -> str:
+    names = "\n".join(f"{index + 1}. {item.file_name or ('文件 ' + str(index + 1))} ({item.kind})" for index, item in enumerate(items))
+    return (
+        f"你是严谨、客观、可审计的期货与市场图表审阅员。当前品种是“{asset_name}”。请按编号分别分析以下输入：\n{names}\n\n"
+        "只依据输入中可见或可读取的证据，不要猜测看不清的价格、时间、合约、指标、新闻或概率。"
+        "每项输出可见事实 facts、技术观察 signals、条件情景 scenarios、风险与反证 risks、"
+        "缺失/不可确认数据 missing_data、证据置信度 confidence（不是盈利概率）和下一步核验 next。"
+        "明确区分 OCR/图表事实与推断；看不清就写无法确认。若不是图表或内容不可读，说明无法推断方向。"
+        "不得生成投资建议、确定性收益或保证性胜率，不要混淆美元、人民币、指数点和合约报价。"
+    )
+
+def _vision_content(item: ImageAnalysisItem) -> dict:
+    if item.kind == "file":
+        if not item.file_data:
+            raise ValueError(f"{item.file_name or '文件'}缺少文件内容，请重新选择后提交")
+        return {"type": "input_file", "filename": item.file_name or "upload", "file_data": item.file_data}
+    if item.data_url and item.data_url.startswith("data:image/"):
+        return {"type": "input_image", "image_url": item.data_url, "detail": "high"}
+    if item.url and item.url.startswith(("http://", "https://")):
+        return {"type": "input_image", "image_url": item.url, "detail": "high"}
+    raise ValueError(f"{item.file_name or '图片'}缺少图片内容，请重新选择文件或填写图片网址")
+
 @app.post("/api/v1/image-analysis")
 async def image_analysis(payload: ImageAnalysisRequest):
-    """Stable adapter contract for chart/image analysis.
-
-    The default deployment intentionally returns a labelled demo result. A
-    production vision provider can replace this function without changing the
-    upload UI or response shape.
-    """
+    """Call the configured production vision model; never return a demo result."""
+    key = (settings.openai_api_key or settings.vision_api_key).strip()
+    if not key:
+        return JSONResponse(
+            {"status": "error", "provider": "openai_vision", "mode": "真实视觉分析未配置",
+             "received": False, "analysis_status": "not_configured",
+             "error": "未配置 OPENAI_API_KEY（或 VISION_API_KEY），未生成演示分析。"},
+            status_code=503, headers={"Cache-Control": "no-store"},
+        )
     asset_name = {"gold": "黄金", "silver": "白银", "copper": "铜", "tin": "锡", "crude": "原油", "usd": "美元"}.get(payload.asset, payload.asset)
+    items = payload.items[:6] if payload.items else [ImageAnalysisItem(
+        id="", kind=payload.kind, file_name=payload.file_name, mime_type=payload.mime_type,
+        size_bytes=payload.size_bytes, width=payload.width, height=payload.height, url=payload.url,
+        data_url=payload.data_url, file_data=payload.file_data,
+    )]
+    try:
+        content = [{"type": "input_text", "text": _vision_prompt(asset_name, items)}]
+        content.extend(_vision_content(item) for item in items)
+    except ValueError as exc:
+        return JSONResponse({"status": "error", "provider": "openai_vision", "analysis_status": "invalid_input", "error": str(exc)}, status_code=400, headers={"Cache-Control": "no-store"})
+    request_body = {
+        "model": settings.openai_vision_model or "gpt-4o", "store": False, "max_output_tokens": 2200,
+        "input": [{"role": "user", "content": content}],
+        "text": {"format": {"type": "json_schema", "name": "futures_image_analysis", "strict": True, "schema": VISION_SCHEMA}},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=settings.vision_timeout_seconds) as client:
+            response = await client.post("https://api.openai.com/v1/responses", headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"}, json=request_body)
+            provider_payload = response.json()
+        if response.status_code >= 400:
+            detail = provider_payload.get("error", {}).get("message", f"视觉模型返回 HTTP {response.status_code}")
+            raise RuntimeError(detail)
+        model_payload = _vision_parse_json(_vision_output_text(provider_payload))
+    except (httpx.HTTPError, ValueError, RuntimeError) as exc:
+        return JSONResponse({"status": "error", "provider": "openai_vision", "mode": "真实视觉分析失败", "received": False, "analysis_status": "provider_error", "error": str(exc)}, status_code=502, headers={"Cache-Control": "no-store"})
     received_at = datetime.now(timezone.utc).isoformat()
-
-    def result_for(item: ImageAnalysisItem, index: int) -> dict:
-        name = item.file_name or ("网址" if item.kind == "url" else f"文件 {index + 1}")
-        dimensions = f"（{item.width}×{item.height}）" if item.width and item.height else ""
-        kind_label = "网址" if item.kind == "url" else "文件" if item.kind == "file" else "图片"
-        return {
-            "id": item.id or f"analysis-{index + 1}", "kind": item.kind, "file_name": name,
-            "provider": "demo_vision", "mode": "演示分析", "received": True,
-            "analysis_status": "demo", "received_at": received_at,
-            "title": f"{asset_name} {kind_label}结构已读取",
-            "conclusion": f"已接收 {name}{dimensions}，当前 {asset_name} 研判仍需结合价格、成交量、持仓和事件窗口交叉验证。",
-            "signals": ["识别趋势线、支撑阻力和突破形态", "检查图表周期、合约月份和时间戳", "对照金银比 / 宏观数据确认是否背离"],
-            "next": "当前为演示视觉结果；配置生产视觉模型后，可进一步返回 OCR、K 线形态、关键价位和图中标注解释。",
-        }
-
-    if payload.items:
-        return {"provider": "demo_vision", "mode": "演示分析", "received": True,
-                "analysis_status": "demo", "received_at": received_at, "count": len(payload.items),
-                "items": [result_for(item, index) for index, item in enumerate(payload.items)]}
-
-    return result_for(ImageAnalysisItem(id="", kind=payload.kind, file_name=payload.file_name,
-                                        mime_type=payload.mime_type, size_bytes=payload.size_bytes,
-                                        width=payload.width, height=payload.height, url=payload.url), 0)
+    model_items = model_payload.get("items") if isinstance(model_payload.get("items"), list) else []
+    results = []
+    for index, item in enumerate(items):
+        raw = next((candidate for candidate in model_items if isinstance(candidate, dict) and candidate.get("index") == index), model_items[index] if index < len(model_items) and isinstance(model_items[index], dict) else {})
+        confidence = raw.get("confidence")
+        try:
+            confidence = max(0, min(100, round(float(confidence))))
+        except (TypeError, ValueError):
+            confidence = 0
+        results.append({
+            "id": item.id or f"analysis-{index + 1}", "kind": item.kind, "file_name": _vision_text(raw.get("file_name"), item.file_name or f"文件 {index + 1}"),
+            "provider": "openai_vision", "mode": f"真实视觉分析（{request_body['model']}）", "received": True, "analysis_status": "complete", "received_at": received_at,
+            "title": _vision_text(raw.get("title"), f"{asset_name} 图片深度分析"), "conclusion": _vision_text(raw.get("conclusion"), "视觉模型未给出可确认结论，请检查输入清晰度。"),
+            "facts": _vision_list(raw.get("facts")), "signals": _vision_list(raw.get("signals")), "scenarios": _vision_list(raw.get("scenarios")),
+            "risks": _vision_list(raw.get("risks")), "missing_data": _vision_list(raw.get("missing_data")), "confidence": confidence,
+            "next": _vision_text(raw.get("next"), "补充清晰的周期、合约、币种、成交量和持仓量后再核验。"),
+        })
+    return {"status": "ok", "provider": "openai_vision", "mode": f"真实视觉分析（{request_body['model']}）", "received": True, "analysis_status": "complete", "received_at": received_at, "count": len(results), "items": results}
 
 @app.get("/api/v1/news/{symbol}")
 async def news(symbol: str, limit: int = Query(default=20, ge=1, le=50)):
