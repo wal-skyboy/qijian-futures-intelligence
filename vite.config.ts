@@ -45,11 +45,12 @@ export default defineConfig(async () => {
   process.env.WRANGLER_LOG_PATH ??= '.wrangler/logs';
   process.env.MINIFLARE_REGISTRY_PATH ??= '.wrangler/registry';
 
-  // The Sites publisher supplies the Worker runtime itself. The optional
-  // Cloudflare/Miniflare dev plugin is intentionally disabled here because it
-  // is not needed for packaging and can make local builds depend on a specific
-  // Node/Miniflare native-runtime pairing.
-  const cloudflarePlugin = null;
+  // Sites validates the emitted server entry as a Worker. Keep the Cloudflare
+  // plugin in the production build so the default export includes fetch().
+  // EdgeOne's separate static builder does not need this plugin.
+  const cloudflarePlugin = isEdgeOneBuild
+    ? null
+    : (await import('@cloudflare/vite-plugin')).cloudflare;
 
   return {
     server: isCodexSeatbeltSandbox
