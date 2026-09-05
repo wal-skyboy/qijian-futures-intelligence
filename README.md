@@ -25,6 +25,8 @@
 
 配置 `.env`：
 
+Sites 生产发布使用默认 `npm run build` 生成带 `fetch` 入口的 Worker；`EDGEONE_BUILD=1` 仅用于旧版 EdgeOne 静态校验，不用于 Sites Worker 发布。
+
 ```env
 MARKET_PROVIDER=free
 NEWS_PROVIDER=gdelt
