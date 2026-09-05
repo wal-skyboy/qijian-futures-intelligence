@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     global_events_url: str = Field(default="", validation_alias="GLOBAL_EVENTS_URL")
     events_fetch_timeout_ms: int = Field(default=8000, validation_alias="EVENTS_FETCH_TIMEOUT_MS")
     http_timeout_seconds: float = 8.0
+    vision_provider: str = Field(default="openai", validation_alias="VISION_PROVIDER")
+    vision_api_key: str = Field(default="", validation_alias="VISION_API_KEY")
+    openai_api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
+    openai_vision_model: str = Field(default="gpt-4o", validation_alias="OPENAI_VISION_MODEL")
+    vision_timeout_seconds: float = Field(default=25.0, validation_alias="VISION_TIMEOUT_SECONDS")
     news_api_key: str = ""
     allowed_origins: str = "http://localhost:3000"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

@@ -38,8 +38,11 @@ DOMESTIC_DELAYED_TOKEN=
 PRIVATE_ACCESS_CODE=
 CTP_BRIDGE_URL=
 CTP_BRIDGE_TOKEN=
-VISION_PROVIDER=demo
+VISION_PROVIDER=openai
+OPENAI_API_KEY=
+OPENAI_VISION_MODEL=gpt-4o
 VISION_API_KEY=
+VISION_TIMEOUT_SECONDS=25
 ```
 
 GDELT 不需 Key；CFTC 公共 PRE 低频访问通常不需 Token；FRED 需要免费账户 Key；Alpha Vantage 免费 Key 适合低频现货/历史查询。免费组合适合个人研究、延迟行情和资讯筛选，不提供 CME/COMEX/LME 的无限制实时 Tick、盘口或商业新闻再分发授权。生产公开服务前仍需核对各来源条款，并在需要时替换为持牌行情 Provider。
@@ -85,7 +88,7 @@ Bridge 最小返回示例（字段可按实际行情补充）：
 
 ## 金银比与图片辅助分析
 
-前端会用黄金/白银报价计算金银比，并结合美元、实际利率、库存和 CFTC 净持仓给出相对强弱解读；金银比只作为组合风格过滤器，不单独触发交易。图片和资料分析支持一次添加最多 6 项 PNG/JPG/WebP/GIF、PDF、CSV、TXT、Markdown、JSON、Office 文件或 HTTP/HTTPS 网址，浏览器会先做本地预览、尺寸与大小校验，逐项显示读取/待提交/分析中/完成/失败状态和总体进度，用户点击“确认并分析”后才调用 `/api/v1/image-analysis`。当前默认 `VISION_PROVIDER=demo` 只提交结构化元数据并返回明确标注的演示分析，不保存文件或伪装成视觉识别；接入生产视觉模型时，只需替换该 Provider，上传队列和返回字段保持不变。服务不可用时会展示本地结构化回退结果和错误原因，不再出现空白状态。
+前端会用黄金/白银报价计算金银比，并结合美元、实际利率、库存和 CFTC 净持仓给出相对强弱解读；金银比只作为组合风格过滤器，不单独触发交易。图片和资料分析支持一次添加最多 6 项 PNG/JPG/WebP/GIF、PDF、CSV、TXT、Markdown、JSON、Office 文件或 HTTP/HTTPS 网址，浏览器会先做本地预览、尺寸与大小校验，逐项显示读取/待提交/分析中/完成/失败状态和总体进度，用户点击“确认并分析”后才调用 /api/v1/image-analysis。生产视觉分析通过服务端 OPENAI_API_KEY（或兼容别名 VISION_API_KEY）调用 OpenAI Responses API，输出可见事实、技术观察、条件情景、风险与反证、缺失数据和证据置信度；密钥未配置或服务失败时明确报错，不生成演示结论，也不保存上传内容。
 
 ## 上线到自有域名
 
@@ -100,7 +103,7 @@ Bridge 最小返回示例（字段可按实际行情补充）：
 
 在 EdgeOne 项目设置中将“根目录”设为 `/edgeone`，框架预设选“React”，编译命令为 `npm run build`，输出目录为 `build`，安装命令为 `npm install`，Node.js 选 `22.17.1`。保存后在“构建部署”中重新部署 `main` 分支。生产域名 `emcdb.com` 保持现有自定义域名和 CNAME，不需要重新配置 DNS。
 
-EdgeOne Pages 负责静态前端；仓库同时提供 `edgeone/cloud-functions/` 同域 API（`/api/v1/market/board`、`/api/v1/market/{symbol}`、`/api/v1/market/candles?symbol=...`、`/api/v1/image-analysis`），部署成功后无需跨域配置，前端默认直接调用当前域名。要启用免费源，在 EdgeOne 项目环境变量增加 `ALPHAVANTAGE_API_KEY`（只放服务端）；未设置时接口仍返回可审计的演示/授权待接入状态，不会伪装成实盘。若使用更完整的 FastAPI 服务，则可继续把 `backend/` 作为独立 API 运行，并在前端环境变量加入 `NEXT_PUBLIC_API_URL=https://你的-api-域名` 后重新部署。现货/外汇源没有可比昨收时，涨跌幅显示为“—”，避免把演示涨跌幅混入实时价格。
+EdgeOne Pages 负责静态前端；仓库同时提供 edgeone/cloud-functions/ 同域 API（/api/v1/market/board、/api/v1/market/{symbol}、/api/v1/market/candles?symbol=...、/api/v1/image-analysis），部署成功后无需跨域配置，前端默认直接调用当前域名。要启用免费源，在 EdgeOne 项目环境变量增加 ALPHAVANTAGE_API_KEY（只放服务端）；要启用真实图片分析，另增 OPENAI_API_KEY（生产环境、仅服务端）和可选 OPENAI_VISION_MODEL。缺少任一密钥时，接口会返回“未配置/服务失败”状态，不会伪装成实盘或演示视觉结论。若使用更完整的 FastAPI 服务，则可继续把 backend/ 作为独立 API 运行，并在前端环境变量加入 NEXT_PUBLIC_API_URL=https://你的-api-域名 后重新部署。现货/外汇源没有可比昨收时，涨跌幅显示为“—”，避免把演示涨跌幅混入实时价格。
 
 ## 100 点平台对标优化
 
