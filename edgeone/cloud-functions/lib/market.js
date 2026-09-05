@@ -12,6 +12,7 @@ const BOARD_TTL_MS = 15_000;
 let boardCache = null;
 let boardExpiresAt = 0;
 const CANDLE_TTL_MS = 60_000;
+const CANDLE_INTERVALS = new Set(['hourly', 'daily', 'weekly', 'monthly', 'yearly']);
 const candleCache = new Map();
 
 function nowIso() {
@@ -181,9 +182,19 @@ export async function marketBoard(env = {}) {
 
 function normalizeCandleInterval(symbol, requested) {
   const value = String(requested || 'daily').toLowerCase();
+  return CANDLE_INTERVALS.has(value) ? value : 'daily';
+}
+
+function providerInterval(symbol, interval) {
   const item = definition(symbol);
-  if (item.historyFunction === 'COPPER') return ['quarterly', 'annual'].includes(value) ? value : 'monthly';
-  return ['weekly', 'monthly'].includes(value) ? value : 'daily';
+  if (interval === 'hourly') return null;
+  if (interval === 'yearly') return item.historyFunction === 'COPPER' ? 'annual' : 'monthly';
+  if (item.historyFunction === 'COPPER') return interval === 'monthly' ? 'monthly' : null;
+  return interval;
+}
+
+function intervalAvailable(symbol, interval) {
+  return providerInterval(symbol, interval) !== null;
 }
 
 function numberFrom(value) {
@@ -252,6 +263,49 @@ function toCandleRows(rows, item) {
   return { candles, synthetic };
 }
 
+function aggregateYearly(candles) {
+  const years = new Map();
+  [...candles].sort((a, b) => String(a.time).localeCompare(String(b.time))).forEach((candle) => {
+    const date = new Date(candle.time);
+    const year = Number.isNaN(date.getTime()) ? String(candle.time).slice(0, 4) : String(date.getUTCFullYear());
+    if (!year || year === 'NaN') return;
+    const current = years.get(year);
+    if (!current) {
+      years.set(year, { ...candle, time: `${year}-12-31T00:00:00.000Z` });
+      return;
+    }
+    current.high = Math.max(current.high, candle.high);
+    current.low = Math.min(current.low, candle.low);
+    current.close = candle.close;
+    if (Number.isFinite(candle.volume)) current.volume = (current.volume || 0) + candle.volume;
+  });
+  return [...years.values()];
+}
+
+function unsupportedIntervalOverrides(symbol, interval) {
+  if (interval === 'hourly') {
+    return {
+      provider: 'free',
+      data_mode: 'intraday_not_supported',
+      data_label: '小时K线需实时源',
+      freshness: '免费商品源不支持小时历史',
+      interval_note: '免费商品历史接口不提供小时级历史；配置持牌实时/延时 intraday Provider 后才会显示真实小时 OHLC。',
+      note: '当前小时图仅作界面占位，所有蜡烛均标记为合成数据，不代表交易所实时 OHLC。',
+    };
+  }
+  if (symbol === 'copper' && ['daily', 'weekly'].includes(interval)) {
+    return {
+      provider: 'free',
+      data_mode: 'interval_not_supported',
+      data_label: '当前源仅提供月/季/年频',
+      freshness: '免费月频参考',
+      interval_note: '铜的免费全球价格源只提供月、季、年频；日/周需配置期货行情 Provider。',
+      note: '当前周期没有可用的免费历史 OHLC，未将月频数据冒充日/周线。',
+    };
+  }
+  return {};
+}
+
 function candleFallback(symbol, interval, overrides = {}) {
   const item = definition(symbol);
   const rows = [];
@@ -274,6 +328,9 @@ function candleFallback(symbol, interval, overrides = {}) {
     symbol,
     name: item.name,
     interval,
+    requested_interval: interval,
+    effective_interval: overrides.effective_interval || interval,
+    source_interval: overrides.source_interval || interval,
     provider: overrides.provider || 'demo',
     data_mode: overrides.data_mode || (item.mode === 'licensed_delayed_required' ? item.mode : 'demo_fallback_no_key'),
     currency: item.currency,
@@ -284,13 +341,16 @@ function candleFallback(symbol, interval, overrides = {}) {
     source_url: item.source,
     freshness: overrides.freshness || (overrides.data_mode === 'fallback_provider_error' ? 'Provider 异常，已回退演示K线' : '演示数据'),
     note: overrides.note || '免费源未返回可用历史 K 线，已显示本地演示形态；不代表交易所实时 OHLC。',
+    interval_note: overrides.interval_note,
     candles: rows,
   };
 }
 
 function historyParams(symbol, interval, key) {
   const item = definition(symbol);
-  const params = new URLSearchParams({ function: item.historyFunction, apikey: key, datatype: 'json' });
+  const fxFunction = interval === 'weekly' ? 'FX_WEEKLY' : interval === 'monthly' ? 'FX_MONTHLY' : 'FX_DAILY';
+  const functionName = item.historyFunction === 'FX_DAILY' ? fxFunction : item.historyFunction;
+  const params = new URLSearchParams({ function: functionName, apikey: key, datatype: 'json' });
   if (item.historyFunction === 'GOLD_SILVER_HISTORY') {
     params.set('symbol', item.avSymbol);
     params.set('interval', interval);
@@ -308,13 +368,19 @@ async function fetchAlphaCandles(symbol, interval, env) {
   const item = definition(symbol);
   const key = apiKey(env);
   if (!key || !item.historyFunction) return null;
-  const response = await fetch(`https://www.alphavantage.co/query?${historyParams(symbol, interval, key).toString()}`, { headers: { Accept: 'application/json' } });
+  const sourceInterval = providerInterval(symbol, interval);
+  if (!sourceInterval) throw new Error('interval unsupported');
+  const response = await fetch(`https://www.alphavantage.co/query?${historyParams(symbol, sourceInterval, key).toString()}`, { headers: { Accept: 'application/json' } });
   if (!response.ok) throw new Error(`Alpha Vantage ${response.status}`);
   const payload = await response.json();
   if (payload?.Note || payload?.Information || payload?.['Error Message']) throw new Error('Alpha Vantage response not usable');
   const rows = historyRows(payload);
   if (rows.length < 2) throw new Error('history missing');
-  const parsed = toCandleRows(rows, item);
+  let parsed = toCandleRows(rows, item);
+  if (interval === 'yearly' && sourceInterval !== 'annual') {
+    parsed = { candles: aggregateYearly(parsed.candles), synthetic: parsed.synthetic };
+  }
+  if (parsed.candles.length < 2) throw new Error('aggregated history missing');
   let asOf = parsed.candles.at(-1)?.time || nowIso();
   let isLive = false;
   let note = parsed.synthetic ? '历史接口主要提供收盘价，OHLC 已按相邻收盘价生成，仅用于结构观察。' : '历史接口返回 OHLC；当前数据按免费源周期更新。';
@@ -334,6 +400,9 @@ async function fetchAlphaCandles(symbol, interval, env) {
     symbol,
     name: item.name,
     interval,
+    requested_interval: interval,
+    effective_interval: interval,
+    source_interval: sourceInterval,
     provider: 'alpha_vantage',
     data_mode: item.mode,
     currency: item.currency,
@@ -344,6 +413,7 @@ async function fetchAlphaCandles(symbol, interval, env) {
     source_url: item.source,
     freshness: isLive ? '当前报价实时；历史按所选周期' : item.mode === 'daily_reference' ? '日频参考' : '历史周期',
     note,
+    interval_note: sourceInterval === 'monthly' && interval === 'yearly' ? '年线由可用月线按自然年聚合，最后一年可能为未完结年度。' : undefined,
     candles: parsed.candles.slice(-48),
   };
 }
@@ -356,8 +426,14 @@ export async function marketCandles(symbol, requestedInterval = 'daily', env = {
   const key = `${actualSymbol}:${interval}`;
   const cached = candleCache.get(key);
   if (cached && Date.now() - cached.at < CANDLE_TTL_MS) return cached.payload;
+  const intervalOverrides = unsupportedIntervalOverrides(actualSymbol, interval);
+  if (!intervalAvailable(actualSymbol, interval)) {
+    const payload = candleFallback(actualSymbol, interval, intervalOverrides);
+    candleCache.set(key, { at: Date.now(), payload });
+    return payload;
+  }
   if (!apiKey(env)) {
-    const payload = candleFallback(actualSymbol, interval, item.mode === 'licensed_delayed_required' ? { data_mode: item.mode, data_label: '交易所授权待接入', freshness: '交易所授权数据', note: '锡的交易所级实时/延迟K线需要持牌行情授权；当前仅展示演示形态。' } : {});
+    const payload = candleFallback(actualSymbol, interval, item.mode === 'licensed_delayed_required' ? { data_mode: item.mode, data_label: '交易所授权待接入', freshness: '交易所授权数据', note: '锡的交易所级实时/延迟K线需要持牌行情授权；当前仅展示演示形态。' } : intervalOverrides);
     candleCache.set(key, { at: Date.now(), payload });
     return payload;
   }
@@ -371,7 +447,7 @@ export async function marketCandles(symbol, requestedInterval = 'daily', env = {
     candleCache.set(key, { at: Date.now(), payload });
     return payload;
   } catch {
-    const payload = candleFallback(actualSymbol, interval, { provider: 'free', data_mode: 'fallback_provider_error', data_label: '免费源暂时异常 · 演示K线', freshness: 'Provider 异常，已回退演示K线' });
+    const payload = candleFallback(actualSymbol, interval, { ...intervalOverrides, provider: 'free', data_mode: 'fallback_provider_error', data_label: intervalOverrides.data_label || '免费源暂时异常 · 演示K线', freshness: intervalOverrides.freshness || 'Provider 异常，已回退演示K线' });
     candleCache.set(key, { at: Date.now(), payload });
     return payload;
   }

@@ -47,7 +47,11 @@ export default defineConfig(async () => {
   process.env.MINIFLARE_REGISTRY_PATH ??= '.wrangler/registry';
 
   // Wrangler snapshots its log path while the Cloudflare plugin is imported.
-  const { cloudflare } = await import('@cloudflare/vite-plugin');
+  // EdgeOne's static builder does not need the Worker plugin; skipping it here
+  // also keeps local static validation independent of Wrangler's native hooks.
+  const cloudflarePlugin = isEdgeOneBuild
+    ? null
+    : (await import('@cloudflare/vite-plugin')).cloudflare;
 
   return {
     css: { postcss: { plugins: [tailwindcss()] } },
@@ -57,10 +61,14 @@ export default defineConfig(async () => {
     plugins: [
       vinext(),
       ...(isEdgeOneBuild ? [] : [sites()]),
-      cloudflare({
-        viteEnvironment: { name: 'rsc', childEnvironments: ['ssr'] },
-        config: localBindingConfig,
-      }),
+      ...(cloudflarePlugin
+        ? [
+            cloudflarePlugin({
+              viteEnvironment: { name: 'rsc', childEnvironments: ['ssr'] },
+              config: localBindingConfig,
+            }),
+          ]
+        : []),
     ],
   };
 });
