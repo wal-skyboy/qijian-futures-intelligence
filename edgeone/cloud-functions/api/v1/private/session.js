@@ -16,7 +16,7 @@ export async function onRequestGet({ request, env }) {
   if (!status.configured) {
     return json({ authenticated: false, status: 'private_auth_not_configured', message: '私有版尚未配置 PRIVATE_ACCESS_CODE。' }, 503, noStore());
   }
-  return json({ authenticated: status.authorized, status: status.authorized ? 'authenticated' : 'logged_out' }, status.authorized ? 200 : 401, noStore());
+  return json({ authenticated: status.authorized, status: status.authorized ? 'authenticated' : 'logged_out', ...(status.expires_at ? { expires_at: status.expires_at } : {}) }, status.authorized ? 200 : 401, noStore());
 }
 
 export async function onRequestPost({ request, env }) {
@@ -33,7 +33,7 @@ export async function onRequestPost({ request, env }) {
   const result = await verifyAccessCode(payload?.access_code, env || {});
   if (!result.valid) return json({ authenticated: false, status: 'invalid_access_code', message: '访问码不正确。' }, 401, noStore());
   const token = await issuePrivateSession(env || {});
-  return json({ authenticated: true, status: 'authenticated', expires_in: 8 * 60 * 60 }, 200, noStore({ 'Set-Cookie': sessionCookie(token) }));
+  return json({ authenticated: true, status: 'authenticated', expires_in: 8 * 60 * 60, expires_at: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString() }, 200, noStore({ 'Set-Cookie': sessionCookie(token) }));
 }
 
 export async function onRequestDelete({ request, env }) {

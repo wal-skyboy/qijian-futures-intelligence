@@ -66,7 +66,8 @@ export async function verifyPrivateSession(request, env = {}) {
   }
   const payload = `${parts[0]}.${parts[1]}`;
   const expected = await hmac(payload, secret);
-  return { configured: true, authorized: constantTimeEqual(parts[2], expected) };
+  const authorized = constantTimeEqual(parts[2], expected);
+  return { configured: true, authorized, expires_at: authorized ? new Date(timestamp + SESSION_TTL_MS).toISOString() : undefined };
 }
 
 export async function verifyAccessCode(candidate, env = {}) {

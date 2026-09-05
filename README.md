@@ -50,6 +50,39 @@ GDELT 不需 Key；CFTC 公共 PRE 低频访问通常不需 Token；FRED 需要�
 
 CTP Bridge 约定：`CTP_BRIDGE_URL` 返回 `{items:[{symbol,name,contract,last,bid,ask,change_pct,volume,open_interest,as_of}],as_of,latency_ms}`；可用 `CTP_BRIDGE_TOKEN` 做服务端 Bearer 校验。Bridge 应自行使用期货公司提供的 CTP SDK/柜台连接，平台只接收已归一化的行情，不保存交易密码、不提供自动下单。
 
+### 私人版完整接入流程
+
+私人版默认关闭，只有完成下面的配置后才会向当前浏览器会话返回本人行情。整个流程不需要把期货账户密码放进网页或 EdgeOne。
+
+1. **配置访问码。** 在 EdgeOne Pages 项目 `qijian-futures-intelligence` 的“项目设置 → 环境变量”中新增 `PRIVATE_ACCESS_CODE`，范围选择“生产”，填入强随机值并保存。保存后在“构建部署”中重新部署 `main`；不要把访问码提交到 Git 仓库或前端代码。
+2. **准备本人 CTP Bridge。** 在中国大陆自有主机或受信网络运行 Bridge，使用期货公司提供的 CTP SDK/柜台连接行情。Bridge 只开放 HTTPS `GET /board`（或由项目配置的路径），并返回下方约定的归一化 JSON；设置 `CTP_BRIDGE_URL`，如 Bridge 要求鉴权再设置 `CTP_BRIDGE_TOKEN`。Bridge 应启用 TLS、访问令牌、来源限制和限流。
+3. **验证网页登录。** 打开 `https://emcdb.com`，进入“本人 CTP 私有版”，点击“重新检查”；输入访问码并登录。登录成功后页面会显示会话到期时间（北京时间）以及“刷新 CTP 行情”按钮。访问码只用于换取 HttpOnly、Secure 会话 Cookie，浏览器不会展示或保存 CTP 密码。
+4. **验证行情链路。** 点击“刷新 CTP 行情”。成功时会显示合约、最新价、买一/卖一、涨跌、成交量、持仓量、行情时间和延迟；所有时间统一显示为北京时间。若 Bridge 未启动或未配置，页面显示明确错误，不会回退为演示实盘价。
+5. **日常与失效处理。** 会话默认 8 小时；点击“退出私有版”立即失效。到期、返回 401 或更换访问码后，重新输入新访问码即可。轮换访问码时：修改 EdgeOne 环境变量 → 保存 → 重新部署 → 退出旧会话 → 用新访问码登录。
+
+Bridge 最小返回示例（字段可按实际行情补充）：
+
+```json
+{
+  "items": [{
+    "symbol": "au",
+    "name": "沪金",
+    "contract": "AU主连",
+    "last": 558.12,
+    "bid": 558.10,
+    "ask": 558.14,
+    "change_pct": 0.86,
+    "volume": 274200,
+    "open_interest": 158400,
+    "as_of": "2026-09-05T10:28:00+08:00"
+  }],
+  "as_of": "2026-09-05T10:28:00+08:00",
+  "latency_ms": 180
+}
+```
+
+`as_of` 可使用带时区的 ISO 8601 时间；页面会统一格式化为北京时间。私人版只读行情，不提供自动下单；如需交易执行，必须另行完成期货公司授权、风控和合规评估。
+
 ## 金银比与图片辅助分析
 
 前端会用黄金/白银报价计算金银比，并结合美元、实际利率、库存和 CFTC 净持仓给出相对强弱解读；金银比只作为组合风格过滤器，不单独触发交易。图片和资料分析支持一次添加最多 6 项 PNG/JPG/WebP/GIF、PDF、CSV、TXT、Markdown、JSON、Office 文件或 HTTP/HTTPS 网址，浏览器会先做本地预览、尺寸与大小校验，逐项显示读取/待提交/分析中/完成/失败状态和总体进度，用户点击“确认并分析”后才调用 `/api/v1/image-analysis`。当前默认 `VISION_PROVIDER=demo` 只提交结构化元数据并返回明确标注的演示分析，不保存文件或伪装成视觉识别；接入生产视觉模型时，只需替换该 Provider，上传队列和返回字段保持不变。服务不可用时会展示本地结构化回退结果和错误原因，不再出现空白状态。
