@@ -58,6 +58,45 @@ SYMBOL_NAMES = {
     "p": "棕榈油",
 }
 
+# Publicly documented Guojin simulation endpoints from the broker's download
+# page.  Production fronts are intentionally not guessed: the broker must
+# issue the account-specific front and SDK/看穿式 configuration.
+CTP_PROFILE_PRESETS: dict[str, dict[str, str]] = {
+    "simnow": {
+        "provider": "simnow_ctp",
+        "label": "SimNow 仿真",
+        "official_api_url": "https://www.simnow.com.cn/static/apiDownload.action",
+    },
+    "guojin_sim_telecom": {
+        "provider": "guojin_ctp",
+        "label": "国金期货仿真 · 成都电信",
+        "front": "tcp://182.140.218.46:41407",
+        "broker_id": "1010",
+        "official_api_url": "https://gjqh.com.cn/ws-2003417-c0003-cn/list_5692.shtml",
+        "sdk_version": "evaluation-v6.7.10",
+    },
+    "guojin_sim_unicom": {
+        "provider": "guojin_ctp",
+        "label": "国金期货仿真 · 成都联通",
+        "front": "tcp://119.6.88.69:41407",
+        "broker_id": "1010",
+        "official_api_url": "https://gjqh.com.cn/ws-2003417-c0003-cn/list_5692.shtml",
+        "sdk_version": "evaluation-v6.7.10",
+    },
+    "guojin_production": {
+        "provider": "guojin_ctp",
+        "label": "国金期货实盘 · 前置待经纪商下发",
+        "official_api_url": "https://gjqh.com.cn/ws-2003417-c0003-cn/list_5692.shtml",
+        "sdk_version": "production-v6.7.13",
+    },
+}
+CTP_PROFILE_ALIASES = {
+    "guojin": "guojin_production",
+    "guojin_sim": "guojin_sim_telecom",
+    "guojin_telecom": "guojin_sim_telecom",
+    "guojin_unicom": "guojin_sim_unicom",
+}
+
 
 def _env(name: str, default: str = "") -> str:
     return str(os.getenv(name, default) or "").strip()
@@ -81,6 +120,11 @@ class CTPConfig:
     """Configuration loaded only from environment variables."""
 
     mode: str = "disabled"
+    profile: str = "simnow"
+    provider: str = "simnow_ctp"
+    profile_label: str = "SimNow 仿真"
+    official_api_url: str = "https://www.simnow.com.cn/static/apiDownload.action"
+    sdk_version: str = ""
     front: str = ""
     broker_id: str = ""
     user_id: str = ""
@@ -101,6 +145,9 @@ class CTPConfig:
 
     @classmethod
     def from_env(cls) -> "CTPConfig":
+        profile_raw = _env("CTP_PROFILE", "simnow").lower().replace("-", "_")
+        profile = CTP_PROFILE_ALIASES.get(profile_raw, profile_raw)
+        preset = CTP_PROFILE_PRESETS.get(profile, CTP_PROFILE_PRESETS["simnow"])
         try:
             client_port = max(0, int(_env("CTP_CLIENT_PORT", "0") or 0))
         except ValueError:
@@ -111,8 +158,13 @@ class CTPConfig:
             stale_after_ms = 5000
         return cls(
             mode=_env("CTP_MODE", "disabled").lower(),
-            front=_env("CTP_MD_FRONT"),
-            broker_id=_env("CTP_BROKER_ID"),
+            profile=profile,
+            provider=_env("CTP_PROVIDER", preset.get("provider", "ctp")),
+            profile_label=_env("CTP_PROFILE_LABEL", preset.get("label", profile)),
+            official_api_url=_env("CTP_OFFICIAL_API_URL", preset.get("official_api_url", "")),
+            sdk_version=_env("CTP_SDK_VERSION", preset.get("sdk_version", "")),
+            front=_env("CTP_MD_FRONT") or preset.get("front", ""),
+            broker_id=_env("CTP_BROKER_ID") or preset.get("broker_id", ""),
             user_id=_env("CTP_USER_ID"),
             password=_env("CTP_PASSWORD"),
             instruments=_split_env("CTP_INSTRUMENTS", DEFAULT_INSTRUMENTS),
@@ -147,11 +199,18 @@ class CTPConfig:
 
         return {
             "mode": self.mode or "disabled",
+            "profile": self.profile,
+            "provider": self.provider,
+            "profile_label": self.profile_label,
+            "sdk_version": self.sdk_version or None,
+            "official_api_url": self.official_api_url or None,
             "enabled": self.enabled,
             "configured": self.configured,
             "token_configured": self.token_configured,
             "instrument_count": len(self.instruments),
             "stale_after_ms": self.stale_after_ms,
+            "front_configured": bool(self.front),
+            "broker_id_configured": bool(self.broker_id),
             "credentials_loaded": bool(self.broker_id and self.user_id and self.password),
         }
 
@@ -300,7 +359,7 @@ def _make_spi(mdapi: Any, bridge: "SimNowBridge") -> Any:
 
 
 class SimNowBridge:
-    """Thread-safe in-memory quote cache backed by a CTP market-data API."""
+    """Thread-safe quote cache backed by SimNow or a broker CTP front."""
 
     def __init__(self, config: CTPConfig | None = None) -> None:
         self.config = config or CTPConfig.from_env()
@@ -548,7 +607,7 @@ class SimNowBridge:
             self._set_error(message or "CTP 返回错误", error_id)
 
     def on_depth_market_data(self, depth: Any) -> None:
-        row = normalize_depth_market_data(depth)
+        row = normalize_depth_market_data(depth, provider=self.config.provider)
         if row is None:
             return
         contract = row["contract"]
@@ -583,7 +642,9 @@ class SimNowBridge:
             return {
                 "status": "ok" if ready else self._state,
                 "ready": ready,
-                "provider": "simnow_ctp",
+                "provider": self.config.provider,
+                "profile": self.config.profile,
+                "profile_label": self.config.profile_label,
                 "data_mode": "ctp_realtime_private",
                 "connected": self._connected,
                 "logged_in": self._logged_in,
@@ -606,18 +667,20 @@ class SimNowBridge:
                 rows = []
             now = datetime.now(UTC)
             status = "ok" if rows else ("stale" if ready and self._quotes else self._state)
-            note = "CTP 实时行情，仅限本人 Bridge 会话；报价时间统一为北京时间。"
+            note = f"{self.config.profile_label} CTP 实时行情，仅限本人 Bridge 会话；报价时间统一为北京时间。"
             if status == "stale":
                 note = "CTP 前置已登录，但超过 freshness 窗口未收到新 Tick；已停止输出旧报价。"
             elif status in {"not_configured", "disabled"}:
-                note = "尚未配置 SimNow CTP Bridge 环境变量；不会生成演示行情。"
+                note = f"尚未配置 {self.config.profile_label} CTP Bridge 环境变量；不会生成演示行情。"
             elif status in {"dependency_missing", "start_error"}:
                 note = self._last_error or "CTP SDK 尚未成功加载。"
             return {
                 "status": status,
                 "audience": "private_owner",
                 "scope": "仅限本人登录",
-                "provider": "simnow_ctp",
+                "provider": self.config.provider,
+                "profile": self.config.profile,
+                "profile_label": self.config.profile_label,
                 "data_mode": "ctp_realtime_private",
                 "delayed": False,
                 "as_of": max((row.get("as_of", "") for row in rows), default=now.isoformat()),
@@ -648,7 +711,13 @@ def create_app(bridge: SimNowBridge | None = None) -> FastAPI:
 
     @app.get("/")
     async def root() -> dict[str, Any]:
-        return {"service": "qijian-simnow-ctp-bridge", "endpoints": ["/health", "/board"], "mode": "read_only_market_data"}
+        return {
+            "service": "qijian-ctp-bridge",
+            "endpoints": ["/health", "/board"],
+            "mode": "read_only_market_data",
+            "provider": current_bridge.config.provider,
+            "profile": current_bridge.config.profile,
+        }
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
@@ -689,4 +758,3 @@ if __name__ == "__main__":  # pragma: no cover - convenience entry point
     import uvicorn
 
     uvicorn.run(app, host=_env("BRIDGE_HOST", "127.0.0.1"), port=int(_env("BRIDGE_PORT", "8787") or 8787))
-

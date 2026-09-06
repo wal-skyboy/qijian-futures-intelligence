@@ -70,6 +70,22 @@ SimNow 适合先把“CTP 前置 → 本地行情 Bridge → 期鉴私有版”�
 
 `openctp-ctp==6.7.7.1` 是用于开发/仿真的 BSD-3-Clause Python 封装，原生库与操作系统、CPU 架构相关。若 SimNow 前置要求的 CTP 版本、看穿式采集或客户端认证与它不匹配，应改用 SimNow/期货公司提供的官方 SDK，并保持 `/board` 返回格式不变。此方案只读行情，不包含自动下单，也不会绕过期货公司、交易所或看穿式终端的合规要求。没有 SimNow 账号和前置参数时，线上页面会保持“CTP Bridge 尚未配置”，不会显示伪造实盘价格。
 
+### 国金期货方案（仿真先行，实盘需经纪商授权）
+
+国金期货公开的[外部接入/下载页](https://gjqh.com.cn/ws-2003417-c0003-cn/list_5692.shtml)列出了 CTP API、仿真参数和看穿式监管资料。仓库提供 `backend/guojin.env.example`，在同一个只读 Bridge 中通过 `CTP_PROFILE` 切换国金配置，不需要另写一套行情协议：
+
+| 配置档 | 行情前置（CTP 格式） | BrokerID | 用途 |
+| --- | --- | --- | --- |
+| `guojin_sim_telecom` | `tcp://182.140.218.46:41407` | `1010` | 成都电信仿真 |
+| `guojin_sim_unicom` | `tcp://119.6.88.69:41407` | `1010` | 成都联通仿真 |
+| `guojin_production` | 必须由国金期货下发 | 必须以账户资料为准 | 本人生产行情 |
+
+前两行是将国金页面公开的 IP/行情端口按 CTP `tcp://host:port` 格式整理后的值；交易端口 `41415` 仅用于交易程序，本项目不连接交易端口、不下单。实盘档不会猜测前置地址，避免把仿真地址误当生产地址。
+
+国金页面同时提供看穿式评测版本 `v6.7.10_CP_20250415`、生产版本 `v6.7.13_20260225` 及客户自开发测试/上线指引。先下载与操作系统、CPU 架构匹配的官方 SDK，按国金要求完成看穿式终端采集、测试和上线认证；`openctp-ctp==6.7.7.1` 仅作为本地开发/仿真封装，不能替代国金要求的生产 SDK。若官方 SDK 不提供 Python 接口，用 C++/Java sidecar 读取 CTP 回调，再按现有 `/board` JSON 合同输出。
+
+本机验证方式：复制 `backend/guojin.env.example`，填写国金账号密码和当日有效合约；仿真选择一个 `guojin_sim_*` 档，生产选择 `guojin_production` 并填写国金下发的 `CTP_MD_FRONT`。启动命令与 SimNow 相同，`/health` 应显示 `provider: guojin_ctp`、`logged_in: true`、`quote_count > 0`；EdgeOne 侧仍只配置 Bridge 的 HTTPS 地址和 `CTP_BRIDGE_TOKEN`。账号密码、AppID/AuthCode 和看穿式采集信息只放本机/受信主机的密钥环境，不上传 Git、不填网页。
+
 ### 同花顺 iFinD × 东方财富 Choice 多源校准
 
 页面的“同花顺 × Choice”区块通过 `/api/v1/sources/china` 汇总国内五个重点合约（沪金、沪银、沪铜、沪锡、上海原油）的授权行情和资讯，并与上期所官方延时基准核对。适配器只接受官方 API 或用户明确配置的 HTTPS JSON/RSS Feed；不抓取网页 HTML、Cookie、登录态，也不逆向终端协议。

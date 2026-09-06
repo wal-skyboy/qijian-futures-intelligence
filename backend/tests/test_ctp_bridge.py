@@ -104,3 +104,32 @@ def test_bridge_returns_only_fresh_logged_in_rows_with_bearer_token():
     assert payload["items"][0]["currency"] == "CNY"
     assert "secret" not in response.text
 
+
+def test_guojin_sim_profile_uses_published_front_and_broker_defaults(monkeypatch):
+    monkeypatch.setenv("CTP_MODE", "guojin_sim")
+    monkeypatch.setenv("CTP_PROFILE", "guojin_sim_unicom")
+    monkeypatch.setenv("CTP_USER_ID", "demo")
+    monkeypatch.setenv("CTP_PASSWORD", "secret")
+    monkeypatch.setenv("CTP_BRIDGE_TOKEN", "bridge-secret")
+    config = CTPConfig.from_env()
+    assert config.provider == "guojin_ctp"
+    assert config.profile == "guojin_sim_unicom"
+    assert config.front == "tcp://119.6.88.69:41407"
+    assert config.broker_id == "1010"
+    assert config.configured is True
+    summary = config.public_summary()
+    assert summary["front_configured"] is True
+    assert summary["broker_id_configured"] is True
+    assert "secret" not in str(summary)
+
+
+def test_guojin_production_profile_requires_broker_issued_front(monkeypatch):
+    monkeypatch.setenv("CTP_MODE", "guojin_production")
+    monkeypatch.setenv("CTP_PROFILE", "guojin_production")
+    monkeypatch.setenv("CTP_USER_ID", "demo")
+    monkeypatch.setenv("CTP_PASSWORD", "secret")
+    monkeypatch.setenv("CTP_BRIDGE_TOKEN", "bridge-secret")
+    config = CTPConfig.from_env()
+    assert config.provider == "guojin_ctp"
+    assert config.front == ""
+    assert config.configured is False

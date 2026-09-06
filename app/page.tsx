@@ -332,7 +332,7 @@ export default function Home(){
       <div className="private-guide-head"><div><strong>本人专属接入流程</strong><span>访问码和 CTP 行情均只在服务端处理，不会出现在公开页面</span></div><span className="private-security">HttpOnly · 8 小时会话</span></div>
       <ol>
         <li><b>配置访问码</b><span>EdgeOne → 项目设置 → 环境变量，新增 PRIVATE_ACCESS_CODE（强随机值），保存后重新部署。</span></li>
-        <li><b>先用 SimNow 验证</b><span>下载 SimNow CTP API，在本机运行只读 Bridge；/health 显示已登录且有新 Tick 后再继续。</span></li>
+        <li><b>先用 SimNow / 国金仿真验证</b><span>下载匹配的 CTP API，选择 SimNow 或国金仿真档，在本机运行只读 Bridge；/health 显示已登录且有新 Tick 后再继续。</span></li>
         <li><b>接入 Bridge</b><span>在中国大陆自有主机运行 CTP Bridge，配置 CTP_BRIDGE_URL；必须使用 CTP_BRIDGE_TOKEN。Bridge 只返回本人行情。</span></li>
         <li><b>登录同步</b><span>刷新本页，输入访问码登录；登录后点击“刷新 CTP 行情”，退出或 8 小时后会话失效。</span></li>
       </ol>
