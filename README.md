@@ -55,6 +55,21 @@ GDELT 不需 Key；CFTC 公共 PRE 低频访问通常不需 Token；FRED 需要�
 
 CTP Bridge 约定：`CTP_BRIDGE_URL` 返回 `{items:[{symbol,name,contract,last,bid,ask,change_pct,volume,open_interest,as_of}],as_of,latency_ms}`；可用 `CTP_BRIDGE_TOKEN` 做服务端 Bearer 校验。Bridge 应自行使用期货公司提供的 CTP SDK/柜台连接，平台只接收已归一化的行情，不保存交易密码、不提供自动下单。
 
+### SimNow 仿真方案（先执行）
+
+SimNow 适合先把“CTP 前置 → 本地行情 Bridge → 期鉴私有版”整条链路跑通。SimNow 的 API 下载页是 [simnow.com.cn/static/apiDownload.action](https://www.simnow.com.cn/static/apiDownload.action)；注册并登录后，下载与测试环境、操作系统和架构匹配的 CTP 期货期权 API。API 包本身不提供账号，必须先在 SimNow 申请仿真账号，并以账号页面显示的行情前置、BrokerID、用户号和密码为准；不要把这些值提交到 Git 或填入网页。
+
+仓库提供只读的 `backend/ctp_bridge.py` 适配器。它使用 `openctp-ctp` 的 CTP 行情回调接收 Tick，在内存中保留最近快照，并输出与 EdgeOne 私有接口一致的 `/board` JSON；`/health` 只返回连接、登录、报价新鲜度和配置状态，不返回账号或密码。CTP 是 TCP 长连接，不能由 EdgeOne Pages 直接连接，因此 Bridge 必须运行在本机或中国大陆自有/受信主机上，再由 EdgeOne 服务端通过 HTTPS 读取。
+
+本机首次验证：
+
+1. 在 SimNow 控制台完成仿真账号和行情权限，下载官方 API；保存页面显示的测试行情前置地址。若 SimNow 或期货公司要求客户端认证，同时保存 AppID/AuthCode，并使用与前置匹配的 SDK 版本。
+2. 复制 `backend/simnow.env.example` 为本机私有环境文件，填写 `CTP_MD_FRONT`、`CTP_BROKER_ID`、`CTP_USER_ID`、`CTP_PASSWORD` 和实际订阅合约（例如 `au2610,ag2610,cu2610,sn2610,sc2610`，以 SimNow 当日可交易合约为准），生成一串仅用于 Bridge 的 `CTP_BRIDGE_TOKEN`。
+3. 在项目根目录安装 `backend/requirements-ctp.txt`，启动 `uvicorn backend.ctp_bridge:app --host 127.0.0.1 --port 8787`。先查看 `http://127.0.0.1:8787/health`，必须看到 `connected: true`、`logged_in: true`，并在交易时段看到 `quote_count` 增加；再用 Bearer 令牌访问 `/board`。未配置、登录失败、订阅失败或超过 5 秒未收到新 Tick 时，Bridge 会返回明确状态并停止输出旧报价。
+4. 要让线上私有版读取 Bridge，在 EdgeOne 生产环境设置 `CTP_BRIDGE_URL=https://你的受信域名/board` 和同值 `CTP_BRIDGE_TOKEN`，保存并重新部署；然后在期鉴“本人 CTP 私有版”输入已有的 `PRIVATE_ACCESS_CODE`，点击“刷新 CTP 行情”。公网只暴露 HTTPS 反向代理，Bridge 端启用防火墙白名单、TLS、令牌和限流；不要把 8787 端口直接暴露给公网。
+
+`openctp-ctp==6.7.7.1` 是用于开发/仿真的 BSD-3-Clause Python 封装，原生库与操作系统、CPU 架构相关。若 SimNow 前置要求的 CTP 版本、看穿式采集或客户端认证与它不匹配，应改用 SimNow/期货公司提供的官方 SDK，并保持 `/board` 返回格式不变。此方案只读行情，不包含自动下单，也不会绕过期货公司、交易所或看穿式终端的合规要求。没有 SimNow 账号和前置参数时，线上页面会保持“CTP Bridge 尚未配置”，不会显示伪造实盘价格。
+
 ### 同花顺 iFinD × 东方财富 Choice 多源校准
 
 页面的“同花顺 × Choice”区块通过 `/api/v1/sources/china` 汇总国内五个重点合约（沪金、沪银、沪铜、沪锡、上海原油）的授权行情和资讯，并与上期所官方延时基准核对。适配器只接受官方 API 或用户明确配置的 HTTPS JSON/RSS Feed；不抓取网页 HTML、Cookie、登录态，也不逆向终端协议。

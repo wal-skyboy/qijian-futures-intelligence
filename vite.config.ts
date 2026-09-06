@@ -1,5 +1,4 @@
 import { sites } from '@openai/sites-vite-plugin';
-import tailwindcss from '@tailwindcss/postcss';
 import vinext from 'vinext';
 import { defineConfig } from 'vite';
 import hostingConfig from './.openai/hosting.json';
@@ -46,15 +45,14 @@ export default defineConfig(async () => {
   process.env.WRANGLER_LOG_PATH ??= '.wrangler/logs';
   process.env.MINIFLARE_REGISTRY_PATH ??= '.wrangler/registry';
 
-  // Wrangler snapshots its log path while the Cloudflare plugin is imported.
-  // EdgeOne's static builder does not need the Worker plugin; skipping it here
-  // also keeps local static validation independent of Wrangler's native hooks.
+  // Sites validates the emitted server entry as a Worker. Keep the Cloudflare
+  // plugin in the production build so the default export includes fetch().
+  // EdgeOne's separate static builder does not need this plugin.
   const cloudflarePlugin = isEdgeOneBuild
     ? null
     : (await import('@cloudflare/vite-plugin')).cloudflare;
 
   return {
-    css: { postcss: { plugins: [tailwindcss()] } },
     server: isCodexSeatbeltSandbox
       ? { watch: { useFsEvents: false, usePolling: true } }
       : undefined,

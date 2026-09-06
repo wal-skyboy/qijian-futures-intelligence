@@ -1,0 +1,17 @@
+.price-calibration{margin-top:18px;overflow:hidden;border-color:rgba(217,155,56,.28)}
+.price-calibration-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:16px 18px 12px;border-bottom:1px solid var(--line)}
+.price-calibration-head h2{margin:0;font-size:13px;color:var(--text)}
+.price-calibration-head p{margin:6px 0 0;color:var(--muted);font-size:9px;line-height:1.55}
+.price-calibration-head>span{flex:0 0 auto;padding:5px 8px;border:1px solid rgba(217,155,56,.4);border-radius:99px;color:var(--amber);font-size:9px}
+.price-calibration.aligned .price-calibration-head>span{border-color:rgba(21,149,111,.45);color:var(--green)}
+.price-calibration.warning .price-calibration-head>span{border-color:rgba(220,91,91,.45);color:var(--red)}
+.price-calibration-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:12px 18px 15px}
+.price-calibration-grid>div{display:flex;flex-direction:column;gap:5px;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:rgba(127,135,145,.04)}
+.price-calibration-grid small{color:var(--muted);font-size:8px}
+.price-calibration-grid strong{font:18px Georgia,serif;color:var(--text);font-variant-numeric:tabular-nums}
+.price-calibration-grid em{font-style:normal;color:var(--muted);font-size:8px;line-height:1.45}
+.price-calibration-grid>p{grid-column:1/-1;margin:0;padding:8px 10px;border-left:2px solid var(--amber);color:var(--muted);font-size:9px;line-height:1.55}
+.price-calibration.aligned .price-calibration-grid>p{border-left-color:var(--green);color:var(--green)}
+.price-calibration.warning .price-calibration-grid>p{border-left-color:var(--red);color:var(--red)}
+.price-calibration.pending .price-calibration-grid>p{border-left-color:var(--amber);color:var(--amber)}
+@media(max-width:560px){.price-calibration-head{padding:14px 16px 11px;gap:8px}.price-calibration-head p{font-size:8px}.price-calibration-grid{grid-template-columns:1fr;padding:10px 16px 13px}.price-calibration-grid>p{grid-column:auto}}

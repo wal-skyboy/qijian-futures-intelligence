@@ -14,6 +14,8 @@ let boardExpiresAt = 0;
 const CANDLE_TTL_MS = 60_000;
 const CANDLE_INTERVALS = new Set(['hourly', 'daily', 'weekly', 'monthly', 'yearly']);
 const candleCache = new Map();
+const QUOTE_TTL_MS = 15_000;
+const quoteCache = new Map();
 
 function nowIso() {
   return new Date().toISOString();
@@ -101,6 +103,9 @@ async function fetchAlpha(symbol, env) {
   const item = definition(symbol);
   const key = apiKey(env);
   if (!key || !item.function) return null;
+  const cacheKey = `${symbol}:${key}`;
+  const cached = quoteCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < QUOTE_TTL_MS) return cached.quote;
   const params = new URLSearchParams({ function: item.function, apikey: key });
   if (item.function === 'GOLD_SILVER_SPOT') params.set('symbol', item.avSymbol);
   if (item.function === 'CURRENCY_EXCHANGE_RATE') {
@@ -116,11 +121,13 @@ async function fetchAlpha(symbol, env) {
   const payload = await response.json();
   const parsed = parseAlpha(payload, item.function);
   if (!parsed.price || !Number.isFinite(parsed.price)) throw new Error('price missing');
-  return {
+  const quote = {
     price: parsed.price,
     change_pct: parsed.change,
     as_of: parsed.asOf || nowIso(),
   };
+  quoteCache.set(cacheKey, { at: Date.now(), quote });
+  return quote;
 }
 
 export async function marketSnapshot(symbol, env = {}) {
@@ -306,13 +313,30 @@ function unsupportedIntervalOverrides(symbol, interval) {
   return {};
 }
 
+function referenceOverrides(symbol, quote, latestBarKind = 'reference_quote') {
+  if (!quote?.price || !Number.isFinite(quote.price)) return {};
+  const item = definition(symbol);
+  const label = item.mode === 'fx_realtime' ? '免费外汇实时' : item.mode === 'daily_reference' ? '免费日频参考' : '免费现货实时';
+  return {
+    reference_price: quote.price,
+    reference_as_of: quote.as_of || nowIso(),
+    reference_provider: 'alpha_vantage',
+    reference_data_mode: item.mode,
+    reference_data_label: label,
+    latest_bar_kind: latestBarKind,
+    calibration_status: latestBarKind === 'reference_quote' ? 'reference_aligned' : 'reference_aligned_synthetic',
+  };
+}
+
 function candleFallback(symbol, interval, overrides = {}) {
   const item = definition(symbol);
+  const referencePrice = numberFrom(overrides.reference_price) ?? item.price;
+  const referenceAsOf = overrides.reference_as_of || nowIso();
   const rows = [];
-  const step = interval === 'monthly' ? 30 * 86400000 : interval === 'weekly' ? 7 * 86400000 : 86400000;
+  const step = interval === 'hourly' ? 60 * 60 * 1000 : interval === 'monthly' ? 30 * 86400000 : interval === 'yearly' ? 365 * 86400000 : interval === 'weekly' ? 7 * 86400000 : 86400000;
   let previous = item.price * 0.972;
   for (let index = 0; index < 36; index += 1) {
-    const close = item.price * (0.972 + 0.004 * Math.sin(index * 0.63) + (index / 35) * 0.012);
+    const close = index === 35 ? referencePrice : item.price * (0.972 + 0.004 * Math.sin(index * 0.63) + (index / 35) * 0.012);
     const open = previous;
     const range = Math.max(Math.abs(close) * 0.004, 0.0001);
     rows.push({
@@ -337,7 +361,14 @@ function candleFallback(symbol, interval, overrides = {}) {
     data_label: overrides.data_label || (item.mode === 'licensed_delayed_required' ? '交易所授权待接入' : '本地演示K线'),
     is_live: false,
     synthetic: true,
-    as_of: nowIso(),
+    as_of: referenceAsOf,
+    reference_price: referencePrice,
+    reference_as_of: referenceAsOf,
+    reference_provider: overrides.reference_provider || (overrides.reference_price !== undefined ? 'alpha_vantage' : overrides.provider || 'demo'),
+    reference_data_mode: overrides.reference_data_mode || (overrides.reference_price !== undefined ? item.mode : 'demo_fallback_no_key'),
+    reference_data_label: overrides.reference_data_label || (overrides.reference_price !== undefined ? (item.mode === 'daily_reference' ? '免费日频参考' : item.mode === 'fx_realtime' ? '免费外汇实时' : '免费现货实时') : '本地演示参考价'),
+    latest_bar_kind: overrides.latest_bar_kind || (overrides.reference_price !== undefined ? 'reference_quote_on_synthetic' : 'synthetic'),
+    calibration_status: overrides.calibration_status || (overrides.reference_price !== undefined ? 'reference_aligned' : 'demo_only'),
     source_url: item.source,
     freshness: overrides.freshness || (overrides.data_mode === 'fallback_provider_error' ? 'Provider 异常，已回退演示K线' : '演示数据'),
     note: overrides.note || '免费源未返回可用历史 K 线，已显示本地演示形态；不代表交易所实时 OHLC。',
@@ -383,19 +414,28 @@ async function fetchAlphaCandles(symbol, interval, env) {
   if (parsed.candles.length < 2) throw new Error('aggregated history missing');
   let asOf = parsed.candles.at(-1)?.time || nowIso();
   let isLive = false;
+  let latestBarKind = 'period_close';
+  let referenceQuote = null;
   let note = parsed.synthetic ? '历史接口主要提供收盘价，OHLC 已按相邻收盘价生成，仅用于结构观察。' : '历史接口返回 OHLC；当前数据按免费源周期更新。';
-  if (LIVE_MODES.has(item.mode)) {
-    const quote = await fetchAlpha(symbol, env);
-    if (quote?.price) {
+  if (item.function && item.mode !== 'licensed_delayed_required') {
+    referenceQuote = await fetchAlpha(symbol, env);
+    if (referenceQuote?.price) {
       const last = parsed.candles.at(-1);
-      const current = { time: quote.as_of || nowIso(), open: last?.close ?? quote.price, high: Math.max(last?.close ?? quote.price, quote.price), low: Math.min(last?.close ?? quote.price, quote.price), close: quote.price };
-      if (last && String(last.time).slice(0, 10) === String(current.time).slice(0, 10)) parsed.candles[parsed.candles.length - 1] = current;
-      else parsed.candles.push(current);
-      asOf = current.time;
-      isLive = true;
-      note = `${parsed.synthetic ? '历史收盘价 OHLC 为合成结构；' : ''}最后一根为免费${item.mode === 'fx_realtime' ? '外汇' : '现货'}实时报价，不等同交易所实时期货K线。`;
+      const current = { time: referenceQuote.as_of || nowIso(), open: last?.close ?? referenceQuote.price, high: Math.max(last?.close ?? referenceQuote.price, referenceQuote.price), low: Math.min(last?.close ?? referenceQuote.price, referenceQuote.price), close: referenceQuote.price };
+      const sameDay = last && String(last.time).slice(0, 10) === String(current.time).slice(0, 10);
+      if (interval === 'daily' && sameDay) parsed.candles[parsed.candles.length - 1] = current;
+      else if (interval === 'daily') parsed.candles.push(current);
+      if (interval === 'daily') {
+        asOf = current.time;
+        latestBarKind = 'reference_quote';
+      }
+      isLive = LIVE_MODES.has(item.mode) && interval === 'daily';
+      note = `${parsed.synthetic ? '历史收盘价 OHLC 为合成结构；' : ''}${latestBarKind === 'reference_quote' ? `最后一根为${item.mode === 'fx_realtime' ? '外汇' : item.mode === 'daily_reference' ? '免费日频参考' : '免费现货'}当前报价，不等同交易所实时期货K线。` : `主力参考价为当前${item.mode === 'fx_realtime' ? '外汇' : item.mode === 'daily_reference' ? '日频参考' : '现货'}报价；当前 ${interval} K 线显示该周期最近收盘，二者并非同一根数据。`}`;
     }
   }
+  const referencePrice = referenceQuote?.price ?? parsed.candles.at(-1)?.close ?? null;
+  const referenceAsOf = referenceQuote?.as_of || asOf;
+  const referenceLabel = item.mode === 'fx_realtime' ? '免费外汇实时' : item.mode === 'daily_reference' ? '免费日频参考' : '免费现货实时';
   return {
     symbol,
     name: item.name,
@@ -410,9 +450,17 @@ async function fetchAlphaCandles(symbol, interval, env) {
     is_live: isLive,
     synthetic: parsed.synthetic,
     as_of: asOf,
+    reference_price: referencePrice,
+    reference_as_of: referenceAsOf,
+    reference_provider: referenceQuote ? 'alpha_vantage' : 'alpha_vantage_history',
+    reference_data_mode: item.mode,
+    reference_data_label: referenceQuote ? referenceLabel : '历史收盘价',
+    latest_bar_kind: latestBarKind,
+    calibration_status: latestBarKind === 'reference_quote' ? 'reference_aligned' : referenceQuote ? 'period_close_vs_reference' : 'history_only',
     source_url: item.source,
     freshness: isLive ? '当前报价实时；历史按所选周期' : item.mode === 'daily_reference' ? '日频参考' : '历史周期',
     note,
+    calibration_note: latestBarKind === 'reference_quote' ? '主力参考价与日K最后一根当前报价使用同一 Provider 快照。' : referenceQuote ? `主力参考价 ${referencePrice} 与 ${interval} 最近收盘分别代表当前报价和周期收盘，请勿直接比较为同一时点。` : '未取得独立当前报价，仅显示历史收盘。',
     interval_note: sourceInterval === 'monthly' && interval === 'yearly' ? '年线由可用月线按自然年聚合，最后一年可能为未完结年度。' : undefined,
     candles: parsed.candles.slice(-48),
   };
@@ -428,7 +476,11 @@ export async function marketCandles(symbol, requestedInterval = 'daily', env = {
   if (cached && Date.now() - cached.at < CANDLE_TTL_MS) return cached.payload;
   const intervalOverrides = unsupportedIntervalOverrides(actualSymbol, interval);
   if (!intervalAvailable(actualSymbol, interval)) {
-    const payload = candleFallback(actualSymbol, interval, intervalOverrides);
+    let referenceQuote = null;
+    if (apiKey(env) && item.function && item.mode !== 'licensed_delayed_required') {
+      try { referenceQuote = await fetchAlpha(actualSymbol, env); } catch { referenceQuote = null; }
+    }
+    const payload = candleFallback(actualSymbol, interval, { ...intervalOverrides, ...referenceOverrides(actualSymbol, referenceQuote, 'reference_quote_on_synthetic') });
     candleCache.set(key, { at: Date.now(), payload });
     return payload;
   }
@@ -447,7 +499,11 @@ export async function marketCandles(symbol, requestedInterval = 'daily', env = {
     candleCache.set(key, { at: Date.now(), payload });
     return payload;
   } catch {
-    const payload = candleFallback(actualSymbol, interval, { ...intervalOverrides, provider: 'free', data_mode: 'fallback_provider_error', data_label: intervalOverrides.data_label || '免费源暂时异常 · 演示K线', freshness: intervalOverrides.freshness || 'Provider 异常，已回退演示K线' });
+    let referenceQuote = null;
+    if (apiKey(env) && item.function && item.mode !== 'licensed_delayed_required') {
+      try { referenceQuote = await fetchAlpha(actualSymbol, env); } catch { referenceQuote = null; }
+    }
+    const payload = candleFallback(actualSymbol, interval, { ...intervalOverrides, ...referenceOverrides(actualSymbol, referenceQuote, 'reference_quote_on_synthetic'), provider: 'free', data_mode: 'fallback_provider_error', data_label: intervalOverrides.data_label || '免费源暂时异常 · 演示K线', freshness: intervalOverrides.freshness || 'Provider 异常，已回退演示K线' });
     candleCache.set(key, { at: Date.now(), payload });
     return payload;
   }
