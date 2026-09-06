@@ -1,10 +1,9 @@
 import type { NextConfig } from 'next';
 
-// EdgeOne Pages serves this project as a static Next.js export.  The app has
-// no server-only routes; API calls are intentionally adapter-backed and fall
-// back to labelled demo data when the API is not configured.
+// The production site runs as a Vinext/Cloudflare Worker so the API adapters
+// under app/api remain available at runtime.  When a provider key is absent,
+// the adapters still return explicitly labelled fallback data.
 const nextConfig: NextConfig = {
-  output: 'export',
   images: { unoptimized: true },
   trailingSlash: true,
 };
