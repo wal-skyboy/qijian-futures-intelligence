@@ -23,6 +23,8 @@
 
 实时交易看板下方提供 K 线视图，前端调用同域 `/api/v1/market/candles?symbol={symbol}&interval=hourly|daily|weekly|monthly|yearly`，图表显示最近蜡烛的北京时间日期刻度、完整更新时间和价格币种。EdgeOne 函数优先使用 Alpha Vantage 的 `GOLD_SILVER_HISTORY`、`FX_DAILY/FX_WEEKLY/FX_MONTHLY`、`WTI`、`COPPER` 历史接口，并在黄金/白银/美元上将最新免费现货/外汇报价标在最后一根；年线由月线按自然年聚合。Alpha Vantage 的商品历史接口公开支持日、周、月，小时级商品历史不在免费接口范围，因此小时选项在未配置持牌 intraday Provider 时会明确标为“需实时源”，只显示合成占位，不冒充实盘 OHLC；铜的免费源为月/季/年频，日/周同样显示待接入。历史源只返回收盘价时，页面会明确写出 OHLC 为结构合成，不把它标成交易所实时期货 K 线。K 线服务端缓存 60 秒，适配免费额度；锡保持“交易所授权待接入”。
 
+K 线交互已按东方财富期货的阅读习惯增强：小时、日、周、月、年可直接切换；横轴按北京时间显示 `MM-DD`、`YYYY-W##`、`YYYY-MM` 或年份；移动鼠标/触控光标会出现十字线、日期和 OHLC/成交量浮窗。黄金统一使用 `COMEX GC · USD/oz`（美元/盎司）计价标签，但免费 Alpha Vantage 返回的仍可能是现货参考，页面不会将其误报为交易所 COMEX 期货报价。
+
 配置 `.env`：
 
 Sites 生产发布使用默认 `npm run build` 生成带 `fetch` 入口的 Worker；`EDGEONE_BUILD=1` 仅用于旧版 EdgeOne 静态校验，不用于 Sites Worker 发布。

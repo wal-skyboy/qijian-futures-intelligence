@@ -197,11 +197,11 @@ async def market_candles(symbol: str, interval: str = Query(default="daily")):
     deterministic fallback so local/demo deployments never render a blank
     panel when no history provider is configured.
     """
-    normalized = interval.lower() if interval.lower() in {"daily", "weekly", "monthly"} else "daily"
+    normalized = interval.lower() if interval.lower() in {"hourly", "daily", "weekly", "monthly", "yearly"} else "daily"
     snapshot = await get_market_provider().snapshot(symbol)
     base = float(snapshot.get("price") or 1)
     now = datetime.now(timezone.utc)
-    step_days = {"daily": 1, "weekly": 7, "monthly": 30}[normalized]
+    step_days = {"hourly": 1 / 24, "daily": 1, "weekly": 7, "monthly": 30, "yearly": 365}[normalized]
     rows = []
     previous = base * 0.972
     for index in range(36):
@@ -216,10 +216,12 @@ async def market_candles(symbol: str, interval: str = Query(default="daily")):
         row["time"] = datetime.fromtimestamp(row["time"], timezone.utc).isoformat()
     live_mode = snapshot.get("data_mode") in {"spot_realtime", "fx_realtime"}
     return {"symbol": symbol, "name": snapshot.get("name", symbol), "interval": normalized,
+            "requested_interval": interval.lower(), "effective_interval": normalized,
             "provider": snapshot.get("provider", "demo"), "data_mode": snapshot.get("data_mode", "demo_fallback"),
             "data_label": "实时报价 + 本地历史演示K线" if live_mode else "本地演示K线",
             "is_live": live_mode, "synthetic": True, "as_of": snapshot.get("as_of"),
             "source_url": snapshot.get("source_url"), "freshness": snapshot.get("freshness", "演示数据"),
+            "interval_note": "小时/日/周/月/年均按所选周期生成；未启用历史 OHLC Provider 时为本地结构演示。",
             "note": "本地 FastAPI 未启用历史 OHLC Provider，当前 K 线为结构演示；不代表交易所实时 OHLC。",
             "candles": rows}
 
