@@ -1,10 +1,10 @@
 const MARKET_DEFINITIONS = {
-  gold: { name: '黄金', price: 2654.8, change: 1.28, score: 72, currency: 'USD', avSymbol: 'GOLD', function: 'GOLD_SILVER_SPOT', historyFunction: 'GOLD_SILVER_HISTORY', mode: 'spot_realtime', source: 'https://www.alphavantage.co/documentation/' },
-  silver: { name: '白银', price: 31.642, change: 0.86, score: 64, currency: 'USD', avSymbol: 'SILVER', function: 'GOLD_SILVER_SPOT', historyFunction: 'GOLD_SILVER_HISTORY', mode: 'spot_realtime', source: 'https://www.alphavantage.co/documentation/' },
-  copper: { name: '铜', price: 9842.5, change: 0.34, score: 58, currency: 'USD', avSymbol: 'COPPER', function: 'COPPER', historyFunction: 'COPPER', mode: 'daily_reference', source: 'https://www.alphavantage.co/documentation/' },
-  tin: { name: '锡', price: 256780, change: -0.42, score: 43, currency: 'USD', avSymbol: 'TIN', function: '', historyFunction: '', mode: 'licensed_delayed_required', source: 'https://www.lme.com/Metals/Non-ferrous/LME-Tin' },
-  crude: { name: '原油', price: 78.42, change: -0.67, score: 47, currency: 'USD', avSymbol: 'WTI', function: 'WTI', historyFunction: 'WTI', mode: 'daily_reference', source: 'https://www.alphavantage.co/documentation/' },
-  usd: { name: '美元', price: 7.18, change: -0.18, score: 52, currency: 'USD/CNY', avSymbol: 'USD/CNY', function: 'CURRENCY_EXCHANGE_RATE', historyFunction: 'FX_DAILY', mode: 'fx_realtime', source: 'https://www.alphavantage.co/documentation/' },
+  gold: { name: '黄金', price: 2654.8, change: 1.28, score: 72, currency: 'USD', instrument_type: 'spot', contract: 'XAU/USD', quote_unit: 'USD/oz', avSymbol: 'GOLD', function: 'GOLD_SILVER_SPOT', historyFunction: 'GOLD_SILVER_HISTORY', mode: 'spot_realtime', source: 'https://www.alphavantage.co/documentation/' },
+  silver: { name: '白银', price: 31.642, change: 0.86, score: 64, currency: 'USD', instrument_type: 'spot', contract: 'XAG/USD', quote_unit: 'USD/oz', avSymbol: 'SILVER', function: 'GOLD_SILVER_SPOT', historyFunction: 'GOLD_SILVER_HISTORY', mode: 'spot_realtime', source: 'https://www.alphavantage.co/documentation/' },
+  copper: { name: '铜', price: 9842.5, change: 0.34, score: 58, currency: 'USD', instrument_type: 'reference', contract: 'COPPER', quote_unit: 'USD/metric ton', avSymbol: 'COPPER', function: 'COPPER', historyFunction: 'COPPER', mode: 'daily_reference', source: 'https://www.alphavantage.co/documentation/' },
+  tin: { name: '锡', price: 256780, change: -0.42, score: 43, currency: 'USD', instrument_type: 'exchange_futures', contract: 'LME Tin', quote_unit: 'USD/metric ton', avSymbol: 'TIN', function: '', historyFunction: '', mode: 'licensed_delayed_required', source: 'https://www.lme.com/Metals/Non-ferrous/LME-Tin' },
+  crude: { name: '原油', price: 78.42, change: -0.67, score: 47, currency: 'USD', instrument_type: 'reference', contract: 'WTI', quote_unit: 'USD/barrel', avSymbol: 'WTI', function: 'WTI', historyFunction: 'WTI', mode: 'daily_reference', source: 'https://www.alphavantage.co/documentation/' },
+  usd: { name: '美元', price: 7.18, change: -0.18, score: 52, currency: 'USD/CNY', instrument_type: 'fx', contract: 'USD/CNY', quote_unit: 'CNY per USD', avSymbol: 'USD/CNY', function: 'CURRENCY_EXCHANGE_RATE', historyFunction: 'FX_DAILY', mode: 'fx_realtime', source: 'https://www.alphavantage.co/documentation/' },
 };
 
 const LIVE_MODES = new Set(['spot_realtime', 'fx_realtime']);
@@ -42,6 +42,9 @@ export function demoSnapshot(symbol, overrides = {}) {
   return {
     symbol,
     name: item.name,
+    instrument_type: item.instrument_type,
+    contract: item.contract,
+    quote_unit: item.quote_unit,
     price: item.price,
     change_pct: item.change,
     currency: item.currency,
@@ -351,6 +354,9 @@ function candleFallback(symbol, interval, overrides = {}) {
   return {
     symbol,
     name: item.name,
+    instrument_type: item.instrument_type,
+    contract: item.contract,
+    quote_unit: item.quote_unit,
     interval,
     requested_interval: interval,
     effective_interval: overrides.effective_interval || interval,
@@ -439,6 +445,9 @@ async function fetchAlphaCandles(symbol, interval, env) {
   return {
     symbol,
     name: item.name,
+    instrument_type: item.instrument_type,
+    contract: item.contract,
+    quote_unit: item.quote_unit,
     interval,
     requested_interval: interval,
     effective_interval: interval,
