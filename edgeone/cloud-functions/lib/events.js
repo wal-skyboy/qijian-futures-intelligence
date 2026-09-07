@@ -188,7 +188,11 @@ export async function globalEvents(env = {}) {
     const url = configured ? providerUrl : `${providerUrl}?${new URLSearchParams({
       query: DEFAULT_QUERY, mode: 'artlist', format: 'json', maxrecords: '40', sort: 'datedesc', timespan: '24h',
     }).toString()}`;
-    const response = await fetchWithTimeout(url, Number(env?.EVENTS_FETCH_TIMEOUT_MS) || 8000);
+    // Leave headroom below the Sites/Workers request deadline.  A provider
+    // timeout must become an explicit provider_error response so the client
+    // can keep its labelled local schedule instead of receiving a cancelled
+    // request with no status at all.
+    const response = await fetchWithTimeout(url, Number(env?.EVENTS_FETCH_TIMEOUT_MS) || 5000);
     if (!response.ok) throw new Error(`events provider ${response.status}`);
     const payload = await response.json();
     const items = dedupe(articleRows(payload).map((row, index) => normaliseItem(row, index, providerUrl)).filter(Boolean));
