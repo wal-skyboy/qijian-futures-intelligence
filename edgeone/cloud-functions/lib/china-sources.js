@@ -1,7 +1,12 @@
 import { domesticDelayedBoard } from './domestic.js';
 
 const CACHE_TTL_MS = 30_000;
-const DEFAULT_TIMEOUT_MS = 8_000;
+// Keep the aggregate public-source endpoint responsive even when an optional
+// authorised feed or exchange site is unavailable. Provider results are
+// labelled individually, so a short timeout is safer than stale data or a
+// request that appears to hang in the dashboard.
+const DEFAULT_TIMEOUT_MS = 1600;
+const MAX_TIMEOUT_MS = 2500;
 const THS_API_URL = 'https://quantapi.51ifind.com/api/v1/real_time_quotation';
 const THS_DOCS_URL = 'https://quantapi.51ifind.com/gwstatic/static/ds_web/quantapi-web/help-center/manual.html';
 const THS_PUBLIC_URL = 'https://futures.10jqka.com.cn/';
@@ -30,6 +35,12 @@ const SOURCE_INFO = {
 };
 
 let cached = { key: '', expiresAt: 0, payload: null };
+
+function providerTimeout(env) {
+  const requested = Number(env?.CHINA_SOURCE_TIMEOUT_MS);
+  if (!Number.isFinite(requested) || requested <= 0) return DEFAULT_TIMEOUT_MS;
+  return Math.min(Math.max(Math.round(requested), 500), MAX_TIMEOUT_MS);
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -220,7 +231,7 @@ async function fetchThsMarket(env) {
     indicators: 'latest,changeRatio,open,high,low,volume,openInterest,bid1,ask1',
   };
   try {
-    const response = await fetchWithTimeout(endpoint, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', access_token: token, ifindlang: 'cn' }, body: JSON.stringify(body) }, Number(env?.CHINA_SOURCE_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS);
+    const response = await fetchWithTimeout(endpoint, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', access_token: token, ifindlang: 'cn' }, body: JSON.stringify(body) }, providerTimeout(env));
     if (!response.ok) throw new Error(`iFinD ${response.status}`);
     const payload = await response.json();
     if (payload?.errorcode && String(payload.errorcode) !== '0') throw new Error(text(payload?.errmsg || payload?.message || 'iFinD 返回错误'));
@@ -241,7 +252,7 @@ async function fetchChoiceMarket(env) {
   const codes = configuredCodes(env, 'EASTMONEY_CONTRACT_CODES');
   const body = { codes: CONTRACTS.map((item) => codes[item.symbol] || item.ths), fields: ['latest', 'change_pct', 'open', 'high', 'low', 'volume', 'open_interest', 'bid', 'ask'] };
   try {
-    const response = await fetchWithTimeout(endpoint, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, access_token: token }, body: JSON.stringify(body) }, Number(env?.CHINA_SOURCE_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS);
+    const response = await fetchWithTimeout(endpoint, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, access_token: token }, body: JSON.stringify(body) }, providerTimeout(env));
     if (!response.ok) throw new Error(`Choice ${response.status}`);
     const payload = await response.json();
     if (payload?.error || payload?.errcode || payload?.error_code) throw new Error(text(payload.error || payload.errmsg || payload.message || 'Choice 返回错误'));
@@ -305,7 +316,7 @@ async function fetchNewsFeed(env, info) {
   if (!configured) return { source: sourceStatus(info, 'not_configured', '未配置资讯 Feed URL', { news_count: 0 }), news: [] };
   if (!/^https:\/\//i.test(configured)) return { source: sourceStatus(info, 'provider_error', '资讯 Feed URL 必须使用 HTTPS'), news: [] };
   try {
-    const response = await fetchWithTimeout(configured, { headers: { Accept: 'application/json, application/rss+xml, application/atom+xml, text/xml' } }, Number(env?.CHINA_SOURCE_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS);
+    const response = await fetchWithTimeout(configured, { headers: { Accept: 'application/json, application/rss+xml, application/atom+xml, text/xml' } }, providerTimeout(env));
     if (!response.ok) throw new Error(`资讯源 ${response.status}`);
     const rawText = await response.text();
     let payload = null;

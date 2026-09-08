@@ -1,6 +1,16 @@
 const OFFICIAL_SHFE_URL = 'https://www.shfe.com.cn/reports/marketdata/delayedquotes/';
 const OFFICIAL_SHFE_DELAYED_URL = 'https://www.shfe.com.cn/data/tradedata/future/delaymarket/delaymarket_all.dat';
-const DEFAULT_TIMEOUT_MS = 8000;
+// Public endpoints must fail closed quickly when an exchange/provider is slow.
+// A delayed quote is useful only when it can be labelled; it should never hold
+// the whole dashboard request open for the provider's network timeout.
+const DEFAULT_TIMEOUT_MS = 1600;
+const MAX_TIMEOUT_MS = 2500;
+
+function providerTimeout(env) {
+  const requested = Number(env?.DOMESTIC_SOURCE_TIMEOUT_MS || env?.DOMESTIC_DELAYED_TIMEOUT_MS);
+  if (!Number.isFinite(requested) || requested <= 0) return DEFAULT_TIMEOUT_MS;
+  return Math.min(Math.max(Math.round(requested), 500), MAX_TIMEOUT_MS);
+}
 
 /**
  * Public domestic futures contract metadata.
@@ -150,7 +160,7 @@ async function fetchConfiguredFeed(env) {
   const token = envValue(env, ['DOMESTIC_DELAYED_TOKEN', 'SHFE_DELAYED_API_KEY']);
   const headers = { Accept: 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
-  const response = await fetchWithTimeout(cacheBustedUrl(providerUrl), { headers });
+  const response = await fetchWithTimeout(cacheBustedUrl(providerUrl), { headers }, providerTimeout(env));
   if (!response.ok) throw new Error(`domestic delayed provider ${response.status}`);
   const payload = await response.json();
   const rows = extractRows(payload);
