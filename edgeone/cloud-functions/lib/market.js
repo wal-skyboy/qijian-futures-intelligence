@@ -45,15 +45,18 @@ export function demoSnapshot(symbol, overrides = {}) {
     instrument_type: item.instrument_type,
     contract: item.contract,
     quote_unit: item.quote_unit,
-    price: item.price,
-    change_pct: item.change,
+    // Keep the static definition only as a generator for local chart shapes.
+    // Never expose it as a quote when a provider has not returned a value.
+    price: null,
+    change_pct: null,
     currency: item.currency,
     bull_bear_score: item.score,
     provider: 'free',
     delayed: true,
     data_mode: 'demo_fallback_no_key',
     source_url: item.source,
-    freshness: '待配置免费 Key',
+    quote_status: 'unavailable',
+    freshness: '暂无可核验报价',
     as_of: nowIso(),
     ...overrides,
   };
@@ -140,11 +143,12 @@ export async function marketSnapshot(symbol, env = {}) {
   if (!apiKey(env)) {
     return demoSnapshot(normalized, {
       data_mode: item.mode === 'licensed_delayed_required' ? item.mode : 'demo_fallback_no_key',
+      quote_status: item.mode === 'licensed_delayed_required' ? 'authorization_required' : 'waiting_key',
       freshness: item.mode === 'licensed_delayed_required' ? '交易所授权数据' : '待配置免费 Key',
     });
   }
   if (!item.function) {
-    return demoSnapshot(normalized, { data_mode: item.mode, freshness: '交易所授权数据' });
+    return demoSnapshot(normalized, { data_mode: item.mode, quote_status: 'authorization_required', freshness: '交易所授权数据' });
   }
   try {
     const live = await fetchAlpha(normalized, env);
@@ -152,12 +156,49 @@ export async function marketSnapshot(symbol, env = {}) {
       ...live,
       provider: 'alpha_vantage',
       data_mode: item.mode,
+      quote_status: 'provider_returned',
       delayed: !LIVE_MODES.has(item.mode),
       freshness: item.mode === 'daily_reference' ? '日频参考' : '免费源实时返回',
     });
   } catch {
-    return demoSnapshot(normalized, { data_mode: 'fallback_provider_error', freshness: 'Provider 异常，已回退演示值' });
+    return demoSnapshot(normalized, { data_mode: 'fallback_provider_error', quote_status: 'provider_error', freshness: 'Provider 异常，未使用旧报价' });
   }
+}
+
+function calibrationStatus(item) {
+  const priceAvailable = typeof item.price === 'number' && Number.isFinite(item.price);
+  if (item.quote_status === 'provider_error' || item.data_mode === 'fallback_provider_error') return 'provider_error';
+  if (item.data_mode === 'licensed_delayed_required') return priceAvailable ? 'provider_aligned' : 'authorization_required';
+  if (item.data_mode === 'spot_realtime' || item.data_mode === 'fx_realtime') return priceAvailable ? 'provider_aligned' : 'waiting_key';
+  if (item.data_mode === 'daily_reference') return priceAvailable ? 'reference_only' : 'waiting_key';
+  return priceAvailable ? 'provider_aligned' : 'waiting_key';
+}
+
+function calibrationNote(status, item) {
+  if (status === 'provider_aligned') return '同一 Provider 返回报价；可用于同口径比较。';
+  if (status === 'reference_only') return '仅日频参考，不等同交易所实时期货报价。';
+  if (status === 'authorization_required') return '交易所级报价需要持牌行情或经纪商授权。';
+  if (status === 'provider_error') return 'Provider 暂时异常；未回退到旧静态价格。';
+  return item.data_mode === 'demo_fallback_no_key' ? '尚未配置免费 Key；当前不显示报价。' : '等待可核验 Provider 返回。';
+}
+
+function calibrationFor(item) {
+  const status = calibrationStatus(item);
+  const asOf = item.as_of ? Date.parse(item.as_of) : NaN;
+  return {
+    symbol: item.symbol,
+    name: item.name,
+    contract: item.contract,
+    instrument_type: item.instrument_type,
+    quote_unit: item.quote_unit,
+    currency: item.currency,
+    price_available: typeof item.price === 'number' && Number.isFinite(item.price),
+    source_present: Boolean(item.source_url),
+    timestamp_present: Number.isFinite(asOf),
+    age_seconds: Number.isFinite(asOf) ? Math.max(0, Math.round((Date.now() - asOf) / 1000)) : null,
+    status,
+    note: calibrationNote(status, item),
+  };
 }
 
 export async function marketBoard(env = {}) {
@@ -166,9 +207,11 @@ export async function marketBoard(env = {}) {
   const started = Date.now();
   const symbols = Object.keys(MARKET_DEFINITIONS);
   const items = await Promise.all(symbols.map((symbol) => marketSnapshot(symbol, env)));
+  const calibration = items.map(calibrationFor);
   const syncedAt = nowIso();
   boardCache = {
     items,
+    calibration,
     as_of: syncedAt,
     sync: {
       status: 'ok',
@@ -177,6 +220,7 @@ export async function marketBoard(env = {}) {
       refresh_mode: 'polling',
       cache_ttl_seconds: BOARD_TTL_MS / 1000,
       live_count: items.filter((item) => LIVE_MODES.has(item.data_mode)).length,
+      calibrated_count: calibration.filter((item) => ['provider_aligned', 'reference_only'].includes(item.status)).length,
       item_count: items.length,
     },
     coverage: [
@@ -333,13 +377,15 @@ function referenceOverrides(symbol, quote, latestBarKind = 'reference_quote') {
 
 function candleFallback(symbol, interval, overrides = {}) {
   const item = definition(symbol);
-  const referencePrice = numberFrom(overrides.reference_price) ?? item.price;
-  const referenceAsOf = overrides.reference_as_of || nowIso();
+  const referencePrice = numberFrom(overrides.reference_price);
+  const hasReference = referencePrice !== null;
+  const shapePrice = item.price;
+  const referenceAsOf = hasReference ? (overrides.reference_as_of || nowIso()) : null;
   const rows = [];
   const step = interval === 'hourly' ? 60 * 60 * 1000 : interval === 'monthly' ? 30 * 86400000 : interval === 'yearly' ? 365 * 86400000 : interval === 'weekly' ? 7 * 86400000 : 86400000;
-  let previous = item.price * 0.972;
+  let previous = shapePrice * 0.972;
   for (let index = 0; index < 36; index += 1) {
-    const close = index === 35 ? referencePrice : item.price * (0.972 + 0.004 * Math.sin(index * 0.63) + (index / 35) * 0.012);
+    const close = index === 35 && hasReference ? referencePrice : shapePrice * (0.972 + 0.004 * Math.sin(index * 0.63) + (index / 35) * 0.012);
     const open = previous;
     const range = Math.max(Math.abs(close) * 0.004, 0.0001);
     rows.push({
@@ -367,14 +413,14 @@ function candleFallback(symbol, interval, overrides = {}) {
     data_label: overrides.data_label || (item.mode === 'licensed_delayed_required' ? '交易所授权待接入' : '本地演示K线'),
     is_live: false,
     synthetic: true,
-    as_of: referenceAsOf,
+    as_of: nowIso(),
     reference_price: referencePrice,
     reference_as_of: referenceAsOf,
-    reference_provider: overrides.reference_provider || (overrides.reference_price !== undefined ? 'alpha_vantage' : overrides.provider || 'demo'),
-    reference_data_mode: overrides.reference_data_mode || (overrides.reference_price !== undefined ? item.mode : 'demo_fallback_no_key'),
-    reference_data_label: overrides.reference_data_label || (overrides.reference_price !== undefined ? (item.mode === 'daily_reference' ? '免费日频参考' : item.mode === 'fx_realtime' ? '免费外汇实时' : '免费现货实时') : '本地演示参考价'),
-    latest_bar_kind: overrides.latest_bar_kind || (overrides.reference_price !== undefined ? 'reference_quote_on_synthetic' : 'synthetic'),
-    calibration_status: overrides.calibration_status || (overrides.reference_price !== undefined ? 'reference_aligned' : 'demo_only'),
+    reference_provider: hasReference ? (overrides.reference_provider || 'alpha_vantage') : 'demo',
+    reference_data_mode: hasReference ? (overrides.reference_data_mode || item.mode) : 'demo_fallback_no_key',
+    reference_data_label: hasReference ? (overrides.reference_data_label || (item.mode === 'daily_reference' ? '免费日频参考' : item.mode === 'fx_realtime' ? '免费外汇实时' : '免费现货实时')) : '暂无可核验参考价',
+    latest_bar_kind: overrides.latest_bar_kind || (hasReference ? 'reference_quote_on_synthetic' : 'synthetic'),
+    calibration_status: overrides.calibration_status || (hasReference ? 'reference_aligned' : 'demo_only'),
     source_url: item.source,
     freshness: overrides.freshness || (overrides.data_mode === 'fallback_provider_error' ? 'Provider 异常，已回退演示K线' : '演示数据'),
     note: overrides.note || '免费源未返回可用历史 K 线，已显示本地演示形态；不代表交易所实时 OHLC。',
