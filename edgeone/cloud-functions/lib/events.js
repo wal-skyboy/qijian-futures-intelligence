@@ -3,6 +3,7 @@ const DEFAULT_GDELT_URL = 'https://api.gdeltproject.org/api/v2/doc/doc';
 const DEFAULT_QUERY = '(gold OR bullion OR XAU OR silver OR XAG OR copper OR tin OR "crude oil" OR WTI OR "US dollar" OR DXY)';
 const DEFAULT_RSS_URL = 'https://news.google.com/rss/search';
 const DEFAULT_RSS_QUERY = 'gold OR silver OR copper OR tin OR "crude oil" OR dollar when:1d';
+const DEFAULT_EVENTS_TIMEOUT_MS = 1400;
 
 const ASSET_RULES = [
   { asset: '黄金', terms: /gold|bullion|xau|贵金属|黄金/i, tags: ['贵金属', '宏观'] },
@@ -206,7 +207,11 @@ export async function globalEvents(env = {}) {
   const started = Date.now();
   const fetchedAt = nowIso();
   try {
-    const timeoutMs = Number(env?.EVENTS_FETCH_TIMEOUT_MS) || 5000;
+    // The public Site request can be cancelled after a few seconds. Cap each
+    // provider attempt so a slow feed never leaves the radar spinning; the
+    // two public feeds below are requested in parallel.
+    const requestedTimeout = Number(env?.EVENTS_FETCH_TIMEOUT_MS) || DEFAULT_EVENTS_TIMEOUT_MS;
+    const timeoutMs = Math.min(Math.max(requestedTimeout, 500), 2500);
     let sourceUrl = providerUrl;
     let providerName = configured ? 'configured_events' : 'gdelt';
     let rows = [];
@@ -218,21 +223,31 @@ export async function globalEvents(env = {}) {
       const gdeltUrl = `${providerUrl}?${new URLSearchParams({
         query: DEFAULT_QUERY, mode: 'artlist', format: 'json', maxrecords: '40', sort: 'datedesc', timespan: '24h',
       }).toString()}`;
-      try {
-        // Leave headroom below the Sites/Workers request deadline. A provider
-        // timeout becomes an explicit fallback attempt rather than a blank UI.
-        const response = await fetchWithTimeout(gdeltUrl, timeoutMs);
-        if (response.ok) rows = articleRows(await response.json());
-      } catch {
-        rows = [];
-      }
-      if (!rows.length) {
-        const rssUrl = `${DEFAULT_RSS_URL}?${new URLSearchParams({ q: DEFAULT_RSS_QUERY, hl: 'en-US', gl: 'US', ceid: 'US:en' }).toString()}`;
-        const response = await fetchWithTimeout(rssUrl, timeoutMs, 'application/rss+xml, application/xml, text/xml');
-        if (!response.ok) throw new Error(`events rss provider ${response.status}`);
-        rows = rssRows(await response.text());
+      const rssUrl = `${DEFAULT_RSS_URL}?${new URLSearchParams({ q: DEFAULT_RSS_QUERY, hl: 'en-US', gl: 'US', ceid: 'US:en' }).toString()}`;
+      const [gdeltResult, rssResult] = await Promise.allSettled([
+        fetchWithTimeout(gdeltUrl, timeoutMs).then(async (response) => ({
+          ok: response.ok,
+          status: response.status,
+          rows: response.ok ? articleRows(await response.json()) : [],
+        })),
+        fetchWithTimeout(rssUrl, timeoutMs, 'application/rss+xml, application/xml, text/xml').then(async (response) => ({
+          ok: response.ok,
+          status: response.status,
+          rows: response.ok ? rssRows(await response.text()) : [],
+        })),
+      ]);
+      const gdelt = gdeltResult.status === 'fulfilled' ? gdeltResult.value : null;
+      const rss = rssResult.status === 'fulfilled' ? rssResult.value : null;
+      if (gdelt?.rows?.length) {
+        rows = gdelt.rows;
+      } else if (rss?.rows?.length) {
+        rows = rss.rows;
         sourceUrl = rssUrl;
         providerName = 'google_news_rss';
+      } else {
+        const gdeltStatus = gdelt?.status ? `gdelt ${gdelt.status}` : 'gdelt timeout';
+        const rssStatus = rss?.status ? `rss ${rss.status}` : 'rss timeout';
+        throw new Error(`events providers unavailable (${gdeltStatus}; ${rssStatus})`);
       }
     }
     const items = dedupe(rows.map((row, index) => normaliseItem(row, index, sourceUrl)).filter(Boolean));
