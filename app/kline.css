@@ -8,3 +8,21 @@
    and pointer friendly while every value keeps its Beijing-time/unit label. */
 .kline-period-tabs{display:inline-flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}.kline-period-tabs button{height:25px;min-width:43px;padding:0 7px;border:0;border-radius:4px;background:transparent;color:var(--muted);font-size:9px;cursor:pointer}.kline-period-tabs button:hover{color:var(--text);background:rgba(255,255,255,.06)}.kline-period-tabs button.active{color:var(--text);background:var(--amber);box-shadow:0 0 0 1px rgba(217,155,56,.2)}.kline-hover-readout{color:var(--muted);font-variant-numeric:tabular-nums;transition:color .15s ease}.kline-hover-readout.is-active{color:var(--text)}.kline-chart{cursor:crosshair;outline:none}.kline-chart:focus-visible{outline:1px solid var(--amber);outline-offset:-2px}.kline-crosshair .crosshair-v,.kline-crosshair .crosshair-h{stroke:var(--amber);stroke-width:1;stroke-dasharray:4 3;opacity:.9}.kline-crosshair .crosshair-point{fill:var(--amber);stroke:var(--text);stroke-width:1.5}.kline-crosshair .crosshair-price-bg{fill:var(--amber);stroke:var(--amber)}.kline-crosshair .crosshair-price{fill:#fff;font:10px Arial;font-variant-numeric:tabular-nums}.kline-tooltip rect{fill:var(--panel);stroke:var(--amber);stroke-width:1;fill-opacity:.96}.kline-tooltip text{fill:var(--text);font:10px Arial;font-variant-numeric:tabular-nums}
 @media(max-width:720px){.kline-actions{align-items:flex-start;flex-wrap:wrap}.kline-period-tabs{order:3;width:100%;justify-content:space-between}.kline-period-tabs button{flex:1;min-width:0}.kline-hover-readout{width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+
+/* Pointer readout: keep the selected candle visible outside the SVG as well,
+   so touch, narrow screens and keyboard/screen-reader users get the same data. */
+.kline-hover-card{margin:10px 18px 0;padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:rgba(8,12,16,.18);color:var(--muted)}
+.kline-hover-card.active{border-color:rgba(217,155,56,.52);background:rgba(217,155,56,.06)}
+.kline-hover-card-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:baseline;gap:10px}
+.kline-hover-card-head>span{color:var(--amber);font-size:9px;font-weight:600}
+.kline-hover-card-head b{min-width:0;overflow-wrap:anywhere;color:var(--text);font-size:10px;font-variant-numeric:tabular-nums}
+.kline-hover-card-head small{font-size:8px;white-space:nowrap}
+.kline-hover-values{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-top:8px}
+.kline-hover-values span{display:flex;gap:5px;align-items:baseline;color:var(--muted);font-size:8px}
+.kline-hover-values b{color:var(--text);font:12px Georgia;font-variant-numeric:tabular-nums}
+.kline-hover-values b.positive{color:var(--green)}
+.kline-hover-values b.negative{color:var(--red)}
+.kline-hover-source{display:block;margin-top:8px;color:var(--muted);font-size:8px;line-height:1.4}
+.kline-hit-area{fill:transparent;pointer-events:all}
+@media(max-width:900px){.kline-hover-values{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:560px){.kline-hover-card{margin-left:16px;margin-right:16px}.kline-hover-card-head{grid-template-columns:1fr}.kline-hover-card-head small{white-space:normal}.kline-hover-values{grid-template-columns:repeat(2,minmax(0,1fr))}}
