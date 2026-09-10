@@ -11,7 +11,10 @@ const { d1, r2 } = hostingConfig;
 // EdgeOne Pages consumes the static client output directly. The OpenAI Sites
 // lifecycle plugin is only needed by the Sites runtime and expects Next.js
 // server metadata that is intentionally not produced by a static export.
-const isEdgeOneBuild = process.env.EDGEONE_BUILD === '1';
+// Keep Sites builds explicit so an inherited EDGEONE_BUILD flag cannot remove
+// the Worker fetch handler required by the Sites publisher.
+const isSitesWorkerBuild = process.env.SITES_BUILD === '1';
+const isEdgeOneBuild = process.env.EDGEONE_BUILD === '1' && !isSitesWorkerBuild;
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === 'seatbelt';
