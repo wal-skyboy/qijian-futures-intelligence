@@ -7,6 +7,22 @@ const MARKET_DEFINITIONS = {
   usd: { name: '美元', price: 7.18, change: -0.18, score: 52, currency: 'USD/CNY', instrument_type: 'fx', contract: 'USD/CNY', quote_unit: 'CNY per USD', avSymbol: 'USD/CNY', function: 'CURRENCY_EXCHANGE_RATE', historyFunction: 'FX_DAILY', mode: 'fx_realtime', source: 'https://www.alphavantage.co/documentation/' },
 };
 
+// COMEX Gold continuous futures are deliberately kept outside the six-item
+// international board.  This prevents a USD/oz spot quote from being shown as
+// a futures quote while still giving the UI a dedicated one-troy-ounce field.
+const COMEX_GOLD_DEFINITION = {
+  symbol: 'comex_gold_1oz',
+  name: 'COMEX黄金主连',
+  price: null,
+  score: 72,
+  currency: 'COMEX_USD',
+  instrument_type: 'futures',
+  contract: 'GC1!',
+  quote_unit: 'USD/oz',
+  mode: 'licensed_realtime_required',
+  source: 'https://www.cmegroup.com/markets/metals/precious/gold.html',
+};
+
 const LIVE_MODES = new Set(['spot_realtime', 'fx_realtime']);
 const BOARD_TTL_MS = 15_000;
 let boardCache = null;
@@ -16,6 +32,10 @@ const CANDLE_INTERVALS = new Set(['hourly', 'daily', 'weekly', 'monthly', 'yearl
 const candleCache = new Map();
 const QUOTE_TTL_MS = 15_000;
 const quoteCache = new Map();
+const COMEX_QUOTE_TTL_MS = 15_000;
+let comexGoldCache = null;
+let comexGoldExpiresAt = 0;
+let comexGoldCacheKey = '';
 
 function nowIso() {
   return new Date().toISOString();
@@ -79,6 +99,156 @@ function textFrom(payload, keys) {
   return null;
 }
 
+function looseNumber(value) {
+  if (value === undefined || value === null || String(value).trim() === '') return null;
+  const parsed = Number(String(value).replace(/[,，\s]/g, ''));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function looseValueFrom(payload, keys) {
+  for (const key of keys) {
+    const raw = payload?.[key];
+    const value = looseNumber(raw);
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+function looseTextFrom(payload, keys) {
+  for (const key of keys) {
+    const raw = payload?.[key];
+    if (raw !== undefined && raw !== null && String(raw).trim()) return String(raw).trim();
+  }
+  return null;
+}
+
+function comexRecords(payload, output = [], depth = 0, seen = new Set()) {
+  if (!payload || depth > 6) return output;
+  if (Array.isArray(payload)) {
+    payload.forEach((item) => comexRecords(item, output, depth + 1, seen));
+    return output;
+  }
+  if (typeof payload !== 'object' || seen.has(payload)) return output;
+  seen.add(payload);
+  const price = looseValueFrom(payload, ['price', 'last', 'last_price', 'lastPrice', 'latest', 'latest_price', 'close', 'settlement', 'settle', 'value', '05. price', '最新价', '最新', '成交价']);
+  if (price !== null) output.push({ payload, price });
+  Object.values(payload).forEach((value) => comexRecords(value, output, depth + 1, seen));
+  return output;
+}
+
+function parseComexQuote(payload) {
+  const record = comexRecords(payload)[0];
+  if (!record) throw new Error('COMEX price missing');
+  const row = record.payload;
+  const price = record.price;
+  const directChange = looseValueFrom(row, ['change_pct', 'changePercent', 'percent_change', 'percentChange', 'pct_change', '涨跌幅']);
+  const absoluteChange = looseValueFrom(row, ['change', 'net_change', 'netChange', 'delta', '涨跌']);
+  const previous = looseValueFrom(row, ['previous_close', 'previousClose', 'prev_close', 'prior_close', '昨结']);
+  const change = directChange !== null
+    ? directChange
+    : absoluteChange !== null && previous
+      ? (absoluteChange / previous) * 100
+      : null;
+  const asOf = looseTextFrom(row, ['as_of', 'asOf', 'timestamp', 'updated_at', 'updatedAt', 'time', 'datetime', 'date', '更新时间']);
+  const delayed = row?.delayed === true || row?.is_delayed === true || row?.delayed === 'true' || row?.is_delayed === 'true';
+  return {
+    price,
+    change_pct: change,
+    as_of: asOf || nowIso(),
+    delayed,
+    source_url: looseTextFrom(row, ['source_url', 'sourceUrl', 'source']) || null,
+  };
+}
+
+function envValue(env, keys) {
+  for (const key of keys) {
+    const value = env?.[key];
+    if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
+  }
+  return '';
+}
+
+function comexPendingSnapshot(reason = '未接入 COMEX 授权行情') {
+  return {
+    symbol: COMEX_GOLD_DEFINITION.symbol,
+    name: COMEX_GOLD_DEFINITION.name,
+    instrument_type: COMEX_GOLD_DEFINITION.instrument_type,
+    contract: COMEX_GOLD_DEFINITION.contract,
+    quote_unit: COMEX_GOLD_DEFINITION.quote_unit,
+    price: null,
+    change_pct: null,
+    currency: COMEX_GOLD_DEFINITION.currency,
+    bull_bear_score: COMEX_GOLD_DEFINITION.score,
+    provider: 'none',
+    delayed: true,
+    available: false,
+    data_mode: COMEX_GOLD_DEFINITION.mode,
+    data_label: 'COMEX主连 · 待授权行情',
+    source_url: COMEX_GOLD_DEFINITION.source,
+    quote_status: 'authorization_required',
+    freshness: reason,
+    as_of: nowIso(),
+    note: 'GC1! 为 COMEX 黄金连续合约，价格单位为美元/金衡盎司（USD/oz）；未接入授权行情时不以黄金现货或沪金价格替代。',
+  };
+}
+
+async function fetchComexGold(env) {
+  const url = envValue(env, ['COMEX_GOLD_FUTURES_URL', 'COMEX_GOLD_URL', 'COMEX_GC_URL']);
+  if (!url) return null;
+  const token = envValue(env, ['COMEX_GOLD_FUTURES_TOKEN', 'COMEX_GOLD_TOKEN', 'COMEX_GC_TOKEN']);
+  const headers = { Accept: 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(url, { headers });
+  if (!response.ok) throw new Error(`COMEX provider ${response.status}`);
+  const payload = await response.json();
+  const parsed = parseComexQuote(payload);
+  return { ...parsed, provider: 'comex_authorized', source_url: parsed.source_url || url };
+}
+
+export async function comexGoldSnapshot(env = {}) {
+  const configuredUrl = envValue(env, ['COMEX_GOLD_FUTURES_URL', 'COMEX_GOLD_URL', 'COMEX_GC_URL']);
+  const current = Date.now();
+  const cacheKey = configuredUrl || 'unconfigured';
+  if (comexGoldCache && comexGoldCacheKey === cacheKey && current < comexGoldExpiresAt) return comexGoldCache;
+  if (!configuredUrl) {
+    const pending = comexPendingSnapshot();
+    comexGoldCache = pending;
+    comexGoldCacheKey = cacheKey;
+    comexGoldExpiresAt = Date.now() + COMEX_QUOTE_TTL_MS;
+    return pending;
+  }
+  try {
+    const quote = await fetchComexGold(env);
+    const payload = {
+      ...comexPendingSnapshot(),
+      ...quote,
+      provider: quote.provider,
+      available: true,
+      delayed: quote.delayed,
+      data_mode: 'comex_authorized_quote',
+      data_label: quote.delayed ? 'COMEX主连 · 授权延时' : 'COMEX主连 · 授权实时',
+      quote_status: 'provider_returned',
+      freshness: quote.delayed ? '授权延时源返回（时效以 Provider 为准）' : '授权源返回（时效以 Provider 为准）',
+      source_url: quote.source_url || configuredUrl,
+      note: 'GC1! COMEX 黄金连续合约，价格单位为美元/金衡盎司（USD/oz）；与黄金现货 XAU/USD、沪金 AU主连分开核对。',
+    };
+    comexGoldCache = payload;
+    comexGoldCacheKey = cacheKey;
+    comexGoldExpiresAt = Date.now() + COMEX_QUOTE_TTL_MS;
+    return payload;
+  } catch {
+    const failed = comexPendingSnapshot('COMEX 授权行情 Provider 异常，未使用现货替代值');
+    failed.data_mode = 'comex_provider_error';
+    failed.quote_status = 'provider_error';
+    failed.data_label = 'COMEX主连 · Provider 异常';
+    failed.freshness = 'Provider 异常，未使用旧报价';
+    comexGoldCache = failed;
+    comexGoldCacheKey = cacheKey;
+    comexGoldExpiresAt = Date.now() + COMEX_QUOTE_TTL_MS;
+    return failed;
+  }
+}
+
 function parseAlpha(payload, fn) {
   if (fn === 'GOLD_SILVER_SPOT') {
     return { price: valueFrom(payload, ['price', '05. price']), asOf: textFrom(payload, ['last_refreshed', '7. Last Refreshed']), change: null };
@@ -138,6 +308,9 @@ async function fetchAlpha(symbol, env) {
 
 export async function marketSnapshot(symbol, env = {}) {
   const normalized = String(symbol || '').toLowerCase();
+  if (normalized === COMEX_GOLD_DEFINITION.symbol || normalized === 'comex_gold' || normalized === 'gc1!') {
+    return comexGoldSnapshot(env);
+  }
   if (!MARKET_DEFINITIONS[normalized]) return demoSnapshot(normalized || 'gold', { data_mode: 'demo_fallback' });
   const item = MARKET_DEFINITIONS[normalized];
   if (!apiKey(env)) {
@@ -206,11 +379,15 @@ export async function marketBoard(env = {}) {
   if (boardCache && current < boardExpiresAt) return boardCache;
   const started = Date.now();
   const symbols = Object.keys(MARKET_DEFINITIONS);
-  const items = await Promise.all(symbols.map((symbol) => marketSnapshot(symbol, env)));
+  const [items, comexGold] = await Promise.all([
+    Promise.all(symbols.map((symbol) => marketSnapshot(symbol, env))),
+    comexGoldSnapshot(env),
+  ]);
   const calibration = items.map(calibrationFor);
   const syncedAt = nowIso();
   boardCache = {
     items,
+    comex_gold: comexGold,
     calibration,
     as_of: syncedAt,
     sync: {
@@ -225,6 +402,7 @@ export async function marketBoard(env = {}) {
     },
     coverage: [
       { name: '黄金 / 白银现货', mode: 'spot_realtime', source_url: 'https://www.alphavantage.co/documentation/' },
+      { name: 'COMEX 黄金主连 GC1! · 1金衡盎司', mode: comexGold.data_mode, source_url: COMEX_GOLD_DEFINITION.source },
       { name: '美元 USD/CNY', mode: 'fx_realtime', source_url: 'https://www.alphavantage.co/documentation/' },
       { name: '铜 / WTI 原油', mode: 'daily_reference', source_url: 'https://www.alphavantage.co/documentation/' },
       { name: 'LME 锡', mode: 'licensed_delayed_required', source_url: 'https://www.lme.com/Metals/Non-ferrous/LME-Tin' },
