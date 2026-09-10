@@ -27,12 +27,14 @@ const LIVE_MODES = new Set(['spot_realtime', 'fx_realtime']);
 const BOARD_TTL_MS = 15_000;
 let boardCache = null;
 let boardExpiresAt = 0;
+let boardCacheKey = '';
 const CANDLE_TTL_MS = 60_000;
 const CANDLE_INTERVALS = new Set(['hourly', 'daily', 'weekly', 'monthly', 'yearly']);
 const candleCache = new Map();
 const QUOTE_TTL_MS = 15_000;
 const quoteCache = new Map();
 const COMEX_QUOTE_TTL_MS = 15_000;
+const DEFAULT_PROVIDER_TIMEOUT_MS = 3_000;
 let comexGoldCache = null;
 let comexGoldExpiresAt = 0;
 let comexGoldCacheKey = '';
@@ -168,6 +170,16 @@ function envValue(env, keys) {
   return '';
 }
 
+async function fetchProvider(url, options = {}, timeoutMs = DEFAULT_PROVIDER_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function comexPendingSnapshot(reason = '未接入 COMEX 授权行情') {
   return {
     symbol: COMEX_GOLD_DEFINITION.symbol,
@@ -198,7 +210,7 @@ async function fetchComexGold(env) {
   const token = envValue(env, ['COMEX_GOLD_FUTURES_TOKEN', 'COMEX_GOLD_TOKEN', 'COMEX_GC_TOKEN']);
   const headers = { Accept: 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
-  const response = await fetch(url, { headers });
+  const response = await fetchProvider(url, { headers });
   if (!response.ok) throw new Error(`COMEX provider ${response.status}`);
   const payload = await response.json();
   const parsed = parseComexQuote(payload);
@@ -207,8 +219,11 @@ async function fetchComexGold(env) {
 
 export async function comexGoldSnapshot(env = {}) {
   const configuredUrl = envValue(env, ['COMEX_GOLD_FUTURES_URL', 'COMEX_GOLD_URL', 'COMEX_GC_URL']);
+  const token = envValue(env, ['COMEX_GOLD_FUTURES_TOKEN', 'COMEX_GOLD_TOKEN', 'COMEX_GC_TOKEN']);
   const current = Date.now();
-  const cacheKey = configuredUrl || 'unconfigured';
+  // Include the credential in the key so a newly rotated token cannot reuse a
+  // quote/error cached under the previous credential.
+  const cacheKey = `${configuredUrl || 'unconfigured'}|${token}`;
   if (comexGoldCache && comexGoldCacheKey === cacheKey && current < comexGoldExpiresAt) return comexGoldCache;
   if (!configuredUrl) {
     const pending = comexPendingSnapshot();
@@ -292,7 +307,7 @@ async function fetchAlpha(symbol, env) {
     params.set('interval', 'daily');
     params.set('datatype', 'json');
   }
-  const response = await fetch(`https://www.alphavantage.co/query?${params.toString()}`, { headers: { Accept: 'application/json' } });
+  const response = await fetchProvider(`https://www.alphavantage.co/query?${params.toString()}`, { headers: { Accept: 'application/json' } });
   if (!response.ok) throw new Error(`Alpha Vantage ${response.status}`);
   const payload = await response.json();
   const parsed = parseAlpha(payload, item.function);
@@ -376,7 +391,12 @@ function calibrationFor(item) {
 
 export async function marketBoard(env = {}) {
   const current = Date.now();
-  if (boardCache && current < boardExpiresAt) return boardCache;
+  const boardKey = [
+    apiKey(env),
+    envValue(env, ['COMEX_GOLD_FUTURES_URL', 'COMEX_GOLD_URL', 'COMEX_GC_URL']),
+    envValue(env, ['COMEX_GOLD_FUTURES_TOKEN', 'COMEX_GOLD_TOKEN', 'COMEX_GC_TOKEN']),
+  ].join('|');
+  if (boardCache && boardCacheKey === boardKey && current < boardExpiresAt) return boardCache;
   const started = Date.now();
   const symbols = Object.keys(MARKET_DEFINITIONS);
   const [items, comexGold] = await Promise.all([
@@ -408,6 +428,7 @@ export async function marketBoard(env = {}) {
       { name: 'LME 锡', mode: 'licensed_delayed_required', source_url: 'https://www.lme.com/Metals/Non-ferrous/LME-Tin' },
     ],
   };
+  boardCacheKey = boardKey;
   boardExpiresAt = Date.now() + BOARD_TTL_MS;
   return boardCache;
 }
@@ -631,7 +652,7 @@ async function fetchAlphaCandles(symbol, interval, env) {
   if (!key || !item.historyFunction) return null;
   const sourceInterval = providerInterval(symbol, interval);
   if (!sourceInterval) throw new Error('interval unsupported');
-  const response = await fetch(`https://www.alphavantage.co/query?${historyParams(symbol, sourceInterval, key).toString()}`, { headers: { Accept: 'application/json' } });
+  const response = await fetchProvider(`https://www.alphavantage.co/query?${historyParams(symbol, sourceInterval, key).toString()}`, { headers: { Accept: 'application/json' } });
   if (!response.ok) throw new Error(`Alpha Vantage ${response.status}`);
   const payload = await response.json();
   if (payload?.Note || payload?.Information || payload?.['Error Message']) throw new Error('Alpha Vantage response not usable');
@@ -704,7 +725,10 @@ export async function marketCandles(symbol, requestedInterval = 'daily', env = {
   const item = MARKET_DEFINITIONS[normalized] ? definition(normalized) : definition('gold');
   const actualSymbol = MARKET_DEFINITIONS[normalized] ? normalized : 'gold';
   const interval = normalizeCandleInterval(actualSymbol, requestedInterval);
-  const key = `${actualSymbol}:${interval}`;
+  // Provider configuration is part of the cache identity.  Without this, a
+  // request made before an API key is configured can mask the first valid
+  // provider response until the one-minute candle TTL expires.
+  const key = `${actualSymbol}:${interval}:${apiKey(env)}`;
   const cached = candleCache.get(key);
   if (cached && Date.now() - cached.at < CANDLE_TTL_MS) return cached.payload;
   const intervalOverrides = unsupportedIntervalOverrides(actualSymbol, interval);

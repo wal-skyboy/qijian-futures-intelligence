@@ -1,0 +1,23 @@
+/* Iteration 02: compact, low-risk workflow improvements. */
+.accuracy-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.accuracy-head-actions button{border:1px solid rgba(217,155,56,.45);background:transparent;color:var(--amber);border-radius:4px;padding:5px 8px;font-size:9px;cursor:pointer}
+.accuracy-head-actions button:hover,.accuracy-head-actions button:focus-visible{background:rgba(217,155,56,.12);outline:0}
+.event-empty,.timeline-empty{border:1px dashed var(--line);border-radius:5px;color:var(--muted);font-size:9px;line-height:1.6;text-align:center;padding:24px 12px;background:rgba(8,12,16,.08)}
+.event-empty small{font-size:8px;color:var(--muted)}
+.roadmap-panel{margin:18px 0;background:linear-gradient(110deg,rgba(217,155,56,.1),rgba(21,149,111,.06));padding:16px 18px}
+.roadmap-panel .sources-intro>span{color:var(--green);font-size:9px;border:1px solid rgba(21,149,111,.35);padding:5px 7px;border-radius:3px;white-space:nowrap}
+.roadmap-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:13px}
+.roadmap-grid article{min-width:0;border:1px solid var(--line);border-radius:5px;padding:10px;background:rgba(8,12,16,.1)}
+.roadmap-grid article>div{display:grid;grid-template-columns:25px minmax(0,1fr) auto;gap:6px;align-items:start}
+.roadmap-grid article>div>b{font:13px Georgia;color:var(--amber)}
+.roadmap-grid article>div strong{font-size:10px;line-height:1.4;overflow-wrap:anywhere}
+.roadmap-grid article>div span{font-size:8px;color:var(--green);white-space:nowrap}
+.roadmap-grid article p{font-size:8px;line-height:1.55;color:var(--muted);margin:8px 0 7px;min-height:25px}
+.roadmap-grid article small{font-size:8px;color:var(--muted)}
+.decision-copy{border:1px solid rgba(217,155,56,.4);background:transparent;color:var(--amber);border-radius:4px;padding:4px 7px;font-size:8px;cursor:pointer;white-space:nowrap}
+.decision-copy:hover,.decision-copy:focus-visible{background:rgba(217,155,56,.12);outline:0}
+.back-to-top{position:fixed;right:18px;bottom:18px;z-index:38;border:1px solid rgba(217,155,56,.5);background:var(--panel);color:var(--amber);border-radius:999px;padding:8px 11px;font-size:10px;box-shadow:0 7px 24px rgba(0,0,0,.22);cursor:pointer}
+.back-to-top:hover,.back-to-top:focus-visible{background:rgba(217,155,56,.14);outline:2px solid rgba(217,155,56,.24);outline-offset:2px}
+.refresh button:disabled{opacity:.6;cursor:wait}
+@media(max-width:1100px){.roadmap-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:700px){.accuracy-head-actions{justify-content:flex-start;margin-top:8px}.roadmap-panel{padding:14px;margin-left:0;margin-right:0}.roadmap-panel .sources-intro{display:block}.roadmap-panel .sources-intro>span{display:inline-block;margin-top:8px}.roadmap-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.roadmap-grid article{padding:8px}.roadmap-grid article>div{grid-template-columns:21px minmax(0,1fr)}.roadmap-grid article>div span{grid-column:2}.roadmap-grid article p{min-height:0}.decision-copy{order:3}.back-to-top{right:12px;bottom:12px}}

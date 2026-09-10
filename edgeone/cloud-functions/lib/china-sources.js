@@ -400,13 +400,18 @@ async function safeCall(task) {
 
 export async function chinaSources(env = {}) {
   const cacheKey = [
-    envValue(env, SOURCE_INFO.ths_ifind.tokenKeys) ? 'ths' : '',
-    envValue(env, SOURCE_INFO.eastmoney_choice.tokenKeys) ? 'choice' : '',
+    envValue(env, SOURCE_INFO.ths_ifind.tokenKeys),
+    envValue(env, SOURCE_INFO.eastmoney_choice.tokenKeys),
+    envValue(env, ['THS_IFIND_API_URL']),
     envValue(env, ['EASTMONEY_CHOICE_API_URL']),
     envValue(env, ['THS_CONTRACT_CODES']),
     envValue(env, ['EASTMONEY_CONTRACT_CODES']),
     envValue(env, ['THS_NEWS_FEED_URL']),
     envValue(env, ['EASTMONEY_NEWS_FEED_URL']),
+    envValue(env, ['DOMESTIC_DELAYED_URL', 'SHFE_DELAYED_API_URL']),
+    envValue(env, ['DOMESTIC_DELAYED_TOKEN', 'SHFE_DELAYED_API_KEY']),
+    envValue(env, ['CHINA_SOURCE_TIMEOUT_MS']),
+    envValue(env, ['DOMESTIC_SOURCE_TIMEOUT_MS', 'DOMESTIC_DELAYED_TIMEOUT_MS']),
   ].join('|');
   if (cached.payload && cached.key === cacheKey && Date.now() < cached.expiresAt) return { ...cached.payload, sync: { ...cached.payload.sync, cached: true } };
   const started = Date.now();
