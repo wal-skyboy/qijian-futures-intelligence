@@ -23,6 +23,6 @@
 .kline-hover-values b.positive{color:var(--green)}
 .kline-hover-values b.negative{color:var(--red)}
 .kline-hover-source{display:block;margin-top:8px;color:var(--muted);font-size:8px;line-height:1.4}
-.kline-hit-area{fill:transparent;pointer-events:all}
+.kline-hit-area{fill:transparent;pointer-events:all;cursor:crosshair;touch-action:none}
 @media(max-width:900px){.kline-hover-values{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:560px){.kline-hover-card{margin-left:16px;margin-right:16px}.kline-hover-card-head{grid-template-columns:1fr}.kline-hover-card-head small{white-space:normal}.kline-hover-values{grid-template-columns:repeat(2,minmax(0,1fr))}}
