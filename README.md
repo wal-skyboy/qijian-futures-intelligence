@@ -12,7 +12,7 @@
 
 ## 免费数据组合（当前默认）
 
-默认 `MARKET_PROVIDER=free`：GDELT 新闻（`/api/v1/news/{symbol}`、`/api/v1/events`）、FRED 宏观（`/api/v1/macro`）、CFTC COT（`/api/v1/cot/{contract}`）和 Alpha Vantage 市场适配器（`/api/v1/market/{symbol}`）。`/api/v1/events` 每次成功抓取后缓存 60 秒，按发布时间去重并归一化品种、多空、影响、置信度和原文链接；前端的手动/自动刷新会轮询该接口，并在失败时明确显示“本地回退”。可用 `GLOBAL_EVENTS_URL` 替换为自有权威事件日历 JSON（字段可使用 `items`、`events` 或 `articles`，沿用 `title`、`summary`、`url`、`publishedAt`、`asset`、`side` 等字段）。配置免费 Alpha Vantage Key 后，黄金/白银使用官方文档标注的 live spot，美元使用 USD/CNY 外汇实时汇率，铜与 WTI 使用日频参考；锡仍明确标为需要交易所授权。没有 Key 或 Provider 失败时返回带 `data_mode` 的明确回退状态，绝不把 Demo 数值伪装成实时交易所价格。
+默认 `MARKET_PROVIDER=free`：GDELT 新闻（`/api/v1/news/{symbol}`、`/api/v1/events`）、FRED 宏观（`/api/v1/macro`）、CFTC COT（`/api/v1/cot/{contract}`）和 Alpha Vantage 市场适配器（`/api/v1/market/{symbol}`）。`/api/v1/events` 每次成功抓取后缓存 60 秒，默认同时轮询 GDELT 与 Google News 的过去 7 天历史窗口，按来源、标题和时间去重并归一化品种、多空、影响、置信度和原文链接；前端的手动/自动刷新会带 `fresh=1` 和时间戳绕过浏览器/CDN 缓存，并在失败时明确显示“本地回退”。未来 7 天不能由新闻流推断，需配置 `GLOBAL_CALENDAR_URL` 指向官方/授权 JSON 或 RSS 日历；字段可使用 `items`、`events`、`articles`、`calendar` 或 `results`，沿用 `title`、`summary`、`url`、`publishedAt`、`scheduledAt`、`eventAt`、`eventDate`、`date`、`asset`、`side` 等字段。页面会把未来条目标成“计划窗口”，并显示日历是否接入、错误状态与下次刷新时间；未配置时只保留明确的待核验提示，不伪造未来事件。配置免费 Alpha Vantage Key 后，黄金/白银使用官方文档标注的 live spot，美元使用 USD/CNY 外汇实时汇率，铜与 WTI 使用日频参考；锡仍明确标为需要交易所授权。没有 Key 或 Provider 失败时返回带 `data_mode` 的明确回退状态，绝不把 Demo 数值伪装成实时交易所价格。
 
 ## 公开版与私有版
 
@@ -38,6 +38,7 @@ ALPHAVANTAGE_API_KEY=
 FRED_API_KEY=
 CFTC_APP_TOKEN=
 GLOBAL_EVENTS_URL=
+GLOBAL_CALENDAR_URL=
 EVENTS_FETCH_TIMEOUT_MS=8000
 DOMESTIC_DELAYED_URL=
 DOMESTIC_DELAYED_TOKEN=

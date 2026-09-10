@@ -1,8 +1,9 @@
 const CACHE_TTL_MS = 60_000;
+const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_GDELT_URL = 'https://api.gdeltproject.org/api/v2/doc/doc';
 const DEFAULT_QUERY = '(gold OR bullion OR XAU OR silver OR XAG OR copper OR tin OR "crude oil" OR WTI OR "US dollar" OR DXY)';
 const DEFAULT_RSS_URL = 'https://news.google.com/rss/search';
-const DEFAULT_RSS_QUERY = 'gold OR silver OR copper OR tin OR "crude oil" OR dollar when:1d';
+const DEFAULT_RSS_QUERY = 'gold OR silver OR copper OR tin OR "crude oil" OR dollar when:7d';
 const DEFAULT_EVENTS_TIMEOUT_MS = 1400;
 
 const ASSET_RULES = [
@@ -56,6 +57,14 @@ function shanghaiTime(date) {
   }).format(date);
 }
 
+function shanghaiDate(date) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(date);
+  const value = (type) => parts.find((part) => part.type === type)?.value || '';
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
 function stableId(value, index) {
   let hash = 2166136261;
   for (const char of value) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
@@ -100,14 +109,32 @@ function sourceUrlFor(raw, providerUrl) {
   return providerUrl;
 }
 
+function firstText(raw, keys) {
+  for (const key of keys) {
+    const value = text(raw?.[key]);
+    if (value) return value;
+  }
+  return '';
+}
+
 function normaliseItem(raw, index, providerUrl) {
   if (!raw || typeof raw !== 'object') return null;
   const title = text(raw.title || raw.headline || raw.name);
   const summary = text(raw.summary || raw.description || raw.snippet || raw.seendescription);
   if (!title && !summary) return null;
   const sourceUrl = sourceUrlFor(raw, providerUrl);
-  const published = parseDate(raw.publishedAt || raw.published_at || raw.timestamp || raw.seendate || raw.date);
+  const publishedRaw = firstText(raw, ['publishedAt', 'published_at', 'pubDate', 'timestamp', 'seendate', 'seenDate']);
+  const genericDate = firstText(raw, ['date']);
+  const scheduledRaw = firstText(raw, [
+    'scheduledAt', 'scheduled_at', 'eventAt', 'event_at', 'eventDate', 'event_date',
+    'releaseAt', 'release_at', 'startTime', 'start_time', 'scheduledDate', 'scheduled_date',
+  ]) || (!publishedRaw ? genericDate : '');
+  const published = parseDate(publishedRaw || scheduledRaw);
+  const eventDate = scheduledRaw ? parseDate(scheduledRaw) : published;
+  const scheduled = Boolean(scheduledRaw);
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(scheduledRaw);
   const publishedAt = published.toISOString();
+  const eventAt = eventDate.toISOString();
   const asset = text(raw.asset) && ASSET_RULES.some((rule) => rule.asset === raw.asset) ? raw.asset : inferAsset(`${title} ${summary}`);
   const side = classify(`${title} ${summary}`, raw.side || raw.sentiment);
   const impact = clamp(number(raw.impact ?? raw.impact_score, side === '中性' ? 52 : 68), 35, 98);
@@ -124,7 +151,10 @@ function normaliseItem(raw, index, providerUrl) {
     source,
     sourceUrl,
     publishedAt,
-    time: text(raw.time) || shanghaiTime(published),
+    eventAt,
+    scheduledAt: scheduled ? eventAt : null,
+    scheduled,
+    time: dateOnly ? '' : text(raw.time) || shanghaiTime(eventDate),
     impact,
     confidence,
     tags: tags.length ? tags : ['全球事件', '待验证'],
@@ -143,18 +173,33 @@ function dedupe(items) {
 
 function timelineFor(items) {
   const now = Date.now();
-  return items.map((item) => ({
-    id: item.id,
-    date: item.publishedAt.slice(0, 10),
-    window: Date.parse(item.publishedAt) > now ? '未来7天' : '过去7天',
-    side: item.side,
-    impact: item.impact >= 80 ? '高' : '中',
-    title: item.title,
-    assets: item.asset,
-    why: item.summary,
-    source: item.source,
-    sourceUrl: item.sourceUrl,
-  }));
+  const lowerBound = now - WINDOW_MS;
+  const upperBound = now + WINDOW_MS;
+  const seen = new Set();
+  return items.map((item) => {
+    const eventAt = item.scheduledAt || item.eventAt || item.publishedAt;
+    const timestamp = Date.parse(eventAt || '');
+    if (!Number.isFinite(timestamp) || timestamp < lowerBound || timestamp > upperBound) return null;
+    const key = `${item.sourceUrl}|${item.title}|${eventAt}`;
+    if (seen.has(key)) return null;
+    seen.add(key);
+    const eventDate = new Date(timestamp);
+    return {
+      id: item.id,
+      date: shanghaiDate(eventDate),
+      eventAt: eventDate.toISOString(),
+      time: item.time || '',
+      window: timestamp >= now ? '未来7天' : '过去7天',
+      scheduled: Boolean(item.scheduled || item.scheduledAt || timestamp >= now),
+      side: item.side,
+      impact: item.impact >= 80 ? '高' : '中',
+      title: item.title,
+      assets: item.asset,
+      why: item.summary,
+      source: item.source,
+      sourceUrl: item.sourceUrl,
+    };
+  }).filter(Boolean);
 }
 
 function articleRows(payload) {
@@ -162,6 +207,8 @@ function articleRows(payload) {
   if (Array.isArray(payload?.articles)) return payload.articles;
   if (Array.isArray(payload?.items)) return payload.items;
   if (Array.isArray(payload?.events)) return payload.events;
+  if (Array.isArray(payload?.calendar)) return payload.calendar;
+  if (Array.isArray(payload?.results)) return payload.results;
   if (Array.isArray(payload?.data)) return payload.data;
   return [];
 }
@@ -185,6 +232,20 @@ function rssRows(xml) {
   });
 }
 
+function atomRows(xml) {
+  return [...String(xml || '').matchAll(/<entry\b[^>]*>([\s\S]*?)<\/entry>/gi)].map((match) => {
+    const block = match[1];
+    const read = (tag) => decodeXml(block.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'))?.[1] || '');
+    const link = block.match(/<link\b[^>]*href=["']([^"']+)["'][^>]*>/i)?.[1] || read('link');
+    return {
+      title: read('title'),
+      description: read('summary') || read('content'),
+      link: decodeXml(link),
+      pubDate: read('published') || read('updated'),
+    };
+  });
+}
+
 async function fetchWithTimeout(url, timeoutMs, accept = 'application/json') {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -195,12 +256,26 @@ async function fetchWithTimeout(url, timeoutMs, accept = 'application/json') {
   }
 }
 
+async function feedRows(url, timeoutMs) {
+  const response = await fetchWithTimeout(url, timeoutMs, 'application/json, application/rss+xml, application/atom+xml, text/xml');
+  if (!response.ok) throw new Error(`events provider ${response.status}`);
+  const body = await response.text();
+  try {
+    return articleRows(JSON.parse(body));
+  } catch {
+    const rows = rssRows(body);
+    return rows.length ? rows : atomRows(body);
+  }
+}
+
 export async function globalEvents(env = {}) {
   const configured = text(env?.GLOBAL_EVENTS_URL);
+  const calendarConfigured = text(env?.GLOBAL_CALENDAR_URL);
+  const forceRefresh = text(env?.EVENTS_FORCE_REFRESH) === '1';
   const providerUrl = configured || DEFAULT_GDELT_URL;
-  const cacheKey = `${providerUrl}|${configured ? 'configured' : DEFAULT_QUERY}`;
+  const cacheKey = `${providerUrl}|${calendarConfigured}|${configured ? 'configured' : DEFAULT_QUERY}|7d`;
   const current = Date.now();
-  if (cached.payload && cached.key === cacheKey && current < cached.expiresAt) {
+  if (!forceRefresh && cached.payload && cached.key === cacheKey && current < cached.expiresAt) {
     return { ...cached.payload, sync: { ...cached.payload.sync, cached: true, next_refresh_at: new Date(cached.expiresAt).toISOString() } };
   }
 
@@ -213,15 +288,15 @@ export async function globalEvents(env = {}) {
     const requestedTimeout = Number(env?.EVENTS_FETCH_TIMEOUT_MS) || DEFAULT_EVENTS_TIMEOUT_MS;
     const timeoutMs = Math.min(Math.max(requestedTimeout, 500), 2500);
     let sourceUrl = providerUrl;
-    let providerName = configured ? 'configured_events' : 'gdelt';
-    let rows = [];
+    let providerName = configured ? 'configured_events' : 'gdelt+google_news';
+    let historyRows = [];
+    let calendarRows = [];
+    let calendarError = '';
     if (configured) {
-      const response = await fetchWithTimeout(providerUrl, timeoutMs);
-      if (!response.ok) throw new Error(`events provider ${response.status}`);
-      rows = articleRows(await response.json());
+      historyRows = await feedRows(providerUrl, timeoutMs);
     } else {
       const gdeltUrl = `${providerUrl}?${new URLSearchParams({
-        query: DEFAULT_QUERY, mode: 'artlist', format: 'json', maxrecords: '40', sort: 'datedesc', timespan: '24h',
+        query: DEFAULT_QUERY, mode: 'artlist', format: 'json', maxrecords: '80', sort: 'datedesc', timespan: '7d',
       }).toString()}`;
       const rssUrl = `${DEFAULT_RSS_URL}?${new URLSearchParams({ q: DEFAULT_RSS_QUERY, hl: 'en-US', gl: 'US', ceid: 'US:en' }).toString()}`;
       const [gdeltResult, rssResult] = await Promise.allSettled([
@@ -238,33 +313,54 @@ export async function globalEvents(env = {}) {
       ]);
       const gdelt = gdeltResult.status === 'fulfilled' ? gdeltResult.value : null;
       const rss = rssResult.status === 'fulfilled' ? rssResult.value : null;
-      if (gdelt?.rows?.length) {
-        rows = gdelt.rows;
-      } else if (rss?.rows?.length) {
-        rows = rss.rows;
-        sourceUrl = rssUrl;
-        providerName = 'google_news_rss';
-      } else {
+      historyRows = [...(gdelt?.rows || []), ...(rss?.rows || [])];
+      if (!historyRows.length) {
         const gdeltStatus = gdelt?.status ? `gdelt ${gdelt.status}` : 'gdelt timeout';
         const rssStatus = rss?.status ? `rss ${rss.status}` : 'rss timeout';
         throw new Error(`events providers unavailable (${gdeltStatus}; ${rssStatus})`);
       }
     }
-    const items = dedupe(rows.map((row, index) => normaliseItem(row, index, sourceUrl)).filter(Boolean));
+    if (calendarConfigured) {
+      try {
+        calendarRows = await feedRows(calendarConfigured, timeoutMs);
+      } catch (cause) {
+        calendarError = cause instanceof Error ? cause.message : 'calendar provider error';
+      }
+    }
+    const historyItems = historyRows.map((row, index) => normaliseItem(row, index, sourceUrl)).filter(Boolean);
+    const calendarItems = calendarRows.map((row, index) => normaliseItem(row, index, calendarConfigured)).filter(Boolean);
+    const items = dedupe(historyItems.filter((item) => !item.scheduled));
+    const scheduledItems = calendarItems.filter((item) => item.scheduled);
+    const timeline = timelineFor([...items, ...scheduledItems]);
+    const historyCount = items.length;
+    const futureCount = timeline.filter((item) => item.window === '未来7天').length;
+    const status = items.length || futureCount
+      ? ((calendarConfigured && calendarError) || (!calendarConfigured && !futureCount) ? 'partial' : 'ok')
+      : 'empty';
     const result = {
-      status: items.length ? 'ok' : 'empty',
+      status,
       provider: providerName,
       fetched_at: fetchedAt,
       source_url: sourceUrl,
+      calendar_source_url: calendarConfigured || null,
+      calendar_configured: Boolean(calendarConfigured),
+      calendar_error: calendarError || undefined,
+      history_window_days: 7,
+      future_window_days: 7,
       items,
-      timeline: timelineFor(items),
+      timeline,
       sync: {
-        status: items.length ? 'ok' : 'empty',
+        status,
         synced_at: fetchedAt,
         latency_ms: Math.max(0, Date.now() - started),
         refresh_mode: 'polling',
         cache_ttl_seconds: CACHE_TTL_MS / 1000,
         item_count: items.length,
+        history_count: historyCount,
+        future_count: futureCount,
+        calendar_item_count: scheduledItems.length,
+        calendar_configured: Boolean(calendarConfigured),
+        calendar_error: calendarError || undefined,
         stale: false,
         next_refresh_at: new Date(Date.now() + CACHE_TTL_MS).toISOString(),
       },
@@ -277,6 +373,11 @@ export async function globalEvents(env = {}) {
       provider: configured ? 'configured_events' : 'gdelt+rss',
       fetched_at: fetchedAt,
       source_url: providerUrl,
+      calendar_source_url: calendarConfigured || null,
+      calendar_configured: Boolean(calendarConfigured),
+      calendar_error: cause instanceof Error ? cause.message : 'events provider error',
+      history_window_days: 7,
+      future_window_days: 7,
       items: [],
       timeline: [],
       error: cause instanceof Error ? cause.message : 'events provider error',
@@ -287,6 +388,11 @@ export async function globalEvents(env = {}) {
         refresh_mode: 'polling',
         cache_ttl_seconds: CACHE_TTL_MS / 1000,
         item_count: 0,
+        history_count: 0,
+        future_count: 0,
+        calendar_item_count: 0,
+        calendar_configured: Boolean(calendarConfigured),
+        calendar_error: cause instanceof Error ? cause.message : 'events provider error',
         stale: true,
         next_refresh_at: new Date(Date.now() + 15_000).toISOString(),
       },
