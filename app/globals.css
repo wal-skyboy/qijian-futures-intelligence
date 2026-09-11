@@ -157,3 +157,32 @@ section[id]{scroll-margin-top:calc(var(--topbar-height) + 16px)}
 .synthesis-foot{display:flex;justify-content:space-between;gap:14px;padding:10px 18px;border-top:1px solid var(--line);color:var(--muted);font-size:8px;line-height:1.5}
 @media(max-width:1000px){.synthesis-stats{grid-template-columns:repeat(3,minmax(0,1fr))}.synthesis-columns{grid-template-columns:1fr}.synthesis-asset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.synthesis-lead{display:block}.synthesis-disclaimer{display:block;margin-top:8px;white-space:normal}.synthesis-stats{grid-template-columns:repeat(2,minmax(0,1fr));padding-left:14px;padding-right:14px}.synthesis-columns,.synthesis-outlook{padding-left:14px;padding-right:14px}.synthesis-news-row{grid-template-columns:1fr auto;gap:5px}.synthesis-news-row time{grid-column:1}.synthesis-news-row>span{grid-column:2;grid-row:1}.synthesis-news-row>div{grid-column:1/-1}.synthesis-news-row a{grid-column:2;grid-row:2}.synthesis-asset-grid{grid-template-columns:1fr}.synthesis-foot{display:block}.synthesis-foot span{display:block}.synthesis-foot span+span{margin-top:4px}}
+
+/* Navigation layout v3: an independent, compact column that never paints over main content. */
+:root{--sidebar-width:248px;--topbar-height:68px}
+.topbar{height:var(--topbar-height)}
+.topbar .brand{width:var(--sidebar-width);flex:0 0 var(--sidebar-width);padding-left:22px}
+.sidebar{top:var(--topbar-height);width:var(--sidebar-width);padding:14px 10px 12px;z-index:35;overflow:hidden}
+.sidebar nav{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-gutter:stable;padding:0 2px 12px 0;gap:2px}
+.sidebar nav::-webkit-scrollbar{width:5px}
+.sidebar nav::-webkit-scrollbar-track{background:transparent}
+.sidebar nav::-webkit-scrollbar-thumb{background:rgba(137,145,156,.32);border-radius:99px}
+.sidebar nav{scrollbar-width:thin;scrollbar-color:rgba(137,145,156,.32) transparent}
+.sidebar .nav-label{height:26px;display:flex;align-items:flex-end;padding:12px 10px 5px;margin:3px 0 2px;color:#68717d;font-size:9px;letter-spacing:1.2px;line-height:1}
+.sidebar .nav-label:not(:first-child){margin-top:9px;border-top:1px solid rgba(126,137,151,.16);padding-top:13px}
+.sidebar a,.sidebar .asset{width:100%;min-width:0;height:35px;padding:0 10px;gap:9px;border-radius:6px;font-size:12px;line-height:1}
+.sidebar a b,.sidebar button b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sidebar a.active,.sidebar .asset.active{border-left:0;box-shadow:inset 2px 0 #dba13e;background:linear-gradient(90deg,rgba(217,155,56,.22),rgba(217,155,56,.08));color:#efbd62}
+.sidebar a:focus-visible,.sidebar .asset:focus-visible{outline:2px solid rgba(217,155,56,.7);outline-offset:-2px}
+.sidebar a:hover:not(.active),.sidebar .asset:hover:not(.active){background:rgba(255,255,255,.055);color:var(--text)}
+.sidebar em{flex:none;min-width:22px;padding:2px 5px;text-align:center}
+.sidebar .asset{height:32px;color:#a8afb9}
+.sidebar .asset small{flex:none;margin-left:auto;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:8px}
+.sidebar .asset.active small{color:#ad8b52}
+.system{flex:0 0 auto;margin-top:8px;padding:11px 10px 4px;border:1px solid rgba(126,137,151,.18);border-radius:7px;background:rgba(8,12,16,.18);font-size:9px}
+.system>div,.system p{min-width:0;gap:8px}
+.system>div span,.system p span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+main{margin-left:var(--sidebar-width);width:calc(100% - var(--sidebar-width));max-width:none;min-width:0}
+
+@media(max-width:1100px){:root{--sidebar-width:228px}.topbar .brand{width:var(--sidebar-width);flex-basis:var(--sidebar-width)}.sidebar{width:var(--sidebar-width)}}
+@media(max-width:700px){:root{--sidebar-width:0px;--topbar-height:60px}.topbar .brand{width:auto;flex:0 1 auto;padding-left:10px}.sidebar{top:var(--topbar-height);width:min(86vw,300px);padding:14px 12px 12px;box-shadow:14px 0 32px rgba(0,0,0,.3)}.sidebar nav{padding-right:2px}.sidebar a,.sidebar .asset{height:40px;font-size:13px}.sidebar .asset{height:38px}.system{font-size:10px}main{margin-left:0;width:100%}}
