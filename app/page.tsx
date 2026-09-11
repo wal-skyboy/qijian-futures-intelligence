@@ -561,7 +561,7 @@ export default function Home(){
       <div className="private-sdk-facts" aria-label="生产 SDK 核验状态">
         <div><b>国金生产 SDK</b><span>v6.7.13_20260225 · Windows x86/x64、Linux x86_64</span></div>
         <div><b>CTP Mini</b><span>V1.7.5 · Linux64/Windows · 仅在经纪商允许时选用</span></div>
-        <div><b>当前设备</b><span>macOS arm64；不能直接加载上述生产库，需在 x86_64 Windows/Linux Bridge 主机运行</span></div>
+        <div><b>本次检测主机</b><span>macOS arm64；不能直接加载上述生产库，需在 x86_64 Windows/Linux Bridge 主机运行</span></div>
       </div>
       <details className="private-contract"><summary>查看 CTP Bridge 返回格式</summary><pre>{'{\n  "items": [{"symbol":"au","name":"沪金","contract":"AU主连","last":0,"bid":0,"ask":0,"change_pct":0,"volume":0,"open_interest":0,"as_of":"2026-09-05T01:00:00Z"}],\n  "as_of": "2026-09-05T01:00:00Z",\n  "latency_ms": 120\n}'}</pre></details>
     </div>
