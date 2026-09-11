@@ -89,7 +89,19 @@ SimNow 适合先把“CTP 前置 → 本地行情 Bridge → 期鉴私有版”�
 
 国金页面同时提供看穿式评测版本 `v6.7.10_CP_20250415`、生产版本 `v6.7.13_20260225` 及客户自开发测试/上线指引。先下载与操作系统、CPU 架构匹配的官方 SDK，按国金要求完成看穿式终端采集、测试和上线认证；`openctp-ctp==6.7.7.1` 仅作为本地开发/仿真封装，不能替代国金要求的生产 SDK。若官方 SDK 不提供 Python 接口，用 C++/Java sidecar 读取 CTP 回调，再按现有 `/board` JSON 合同输出。
 
-本机验证方式：复制 `backend/guojin.env.example`，填写国金账号密码和当日有效合约；仿真选择一个 `guojin_sim_*` 档，生产选择 `guojin_production` 并填写国金下发的 `CTP_MD_FRONT`。启动命令与 SimNow 相同，`/health` 应显示 `provider: guojin_ctp`、`logged_in: true`、`quote_count > 0`；EdgeOne 侧仍只配置 Bridge 的 HTTPS 地址和 `CTP_BRIDGE_TOKEN`。账号密码、AppID/AuthCode 和看穿式采集信息只放本机/受信主机的密钥环境，不上传 Git、不填网页。
+本次已核验的下载包用途如下：
+
+| 文件 | 用途与核验结果 |
+| --- | --- |
+| `v6.7.13_20260225_trader.zip` | 国金生产版交易/行情 API 总包，内含 Trader API、MdUser API 的 Windows x86/x64 与 Linux x86_64 库及头文件；生产 Bridge 应以经纪商要求的版本和部署方式为准。 |
+| `6.7.13_apidemo.zip` | 看穿式生产 Demo 的 C++ 工程、配置样例、Windows 预编译库和日志目录，用于理解回调与认证流程；样例配置中的账号字段仅作示例，不能直接用于实盘。 |
+| `20200922_documents.zip` | CTP Client Development Guide 等开发文档，说明前置注册、登录、订阅和回调生命周期。 |
+| `6.7.13chm_20260626.zip` | 6.7.13 API CHM 接口/字段/错误码参考，开发时查签名和返回码。 |
+| `CTPMini_V1.7.5_20260115.zip` | CTP Mini V1.7.5 的 Linux64/Windows SDK 与开发手册；只有国金确认账户和前置支持 Mini 时才切换。 |
+
+当前操作设备是 macOS arm64，而本次生产库是 Windows x86/x64 或 Linux x86_64，不能在本机直接加载。Mac 上安装的 `openctp-ctp` 只用于 Bridge 的结构/仿真自检，不等同于国金生产 SDK；生产行情需将只读 Bridge 部署到受信的 x86_64 Windows/Linux 主机，再把其 HTTPS `/board` 地址配置到 EdgeOne。生产前置、BrokerID、账户、AppID/AuthCode 和看穿式采集参数尚未由国金提供时，不执行真实登录，也不显示伪造行情。生产环境可复制 `backend/guojin-production.env.example`，填入经纪商下发值后再按下方流程验证。
+
+本机验证方式：复制 `backend/guojin.env.example`，填写国金账号密码和当日有效合约；仿真选择一个 `guojin_sim_*` 档并按 SimNow 命令启动，`/health` 应显示 `provider: guojin_ctp`、`logged_in: true`、`quote_count > 0`。生产不要把 `guojin_production` 交给 `openctp-ctp` 启动：当前适配器会安全停在 `production_sdk_required`，必须在受信 x86_64 Windows/Linux 主机用国金 v6.7.13 官方 SDK/C++ 或 Java sidecar 输出同一 `/board` 合同，再配置 EdgeOne 的 HTTPS 地址和 `CTP_BRIDGE_TOKEN`。账号密码、AppID/AuthCode 和看穿式采集信息只放本机/受信主机的密钥环境，不上传 Git、不填网页。
 
 ### 同花顺 iFinD × 东方财富 Choice 多源校准
 

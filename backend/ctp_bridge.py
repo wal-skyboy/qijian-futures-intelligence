@@ -428,6 +428,17 @@ class SimNowBridge:
                 self._state = "not_configured"
                 self._last_error = "缺少 CTP_MODE、CTP_MD_FRONT、CTP_BROKER_ID、CTP_USER_ID、CTP_PASSWORD 或 CTP_INSTRUMENTS。"
             return
+        # The bundled openctp-ctp wheel is a development/simulation wrapper
+        # and must never be mistaken for the broker's production SDK. The
+        # official Guojin v6.7.13 libraries are architecture-specific and
+        # normally require the broker's C++/Java sidecar plus compliance
+        # collection. Keep this adapter read-only and fail closed until that
+        # sidecar exposes the same /board contract.
+        if self.config.profile == "guojin_production":
+            with self._lock:
+                self._state = "production_sdk_required"
+                self._last_error = "生产档不会加载 openctp-ctp；请在受信 x86_64 Windows/Linux 主机用国金 v6.7.13 官方 SDK sidecar 提供 /board。"
+            return
         with self._lock:
             if self._started:
                 return
@@ -672,7 +683,7 @@ class SimNowBridge:
                 note = "CTP 前置已登录，但超过 freshness 窗口未收到新 Tick；已停止输出旧报价。"
             elif status in {"not_configured", "disabled"}:
                 note = f"尚未配置 {self.config.profile_label} CTP Bridge 环境变量；不会生成演示行情。"
-            elif status in {"dependency_missing", "start_error"}:
+            elif status in {"dependency_missing", "start_error", "production_sdk_required"}:
                 note = self._last_error or "CTP SDK 尚未成功加载。"
             return {
                 "status": status,

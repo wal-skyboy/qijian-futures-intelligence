@@ -133,3 +133,23 @@ def test_guojin_production_profile_requires_broker_issued_front(monkeypatch):
     assert config.provider == "guojin_ctp"
     assert config.front == ""
     assert config.configured is False
+
+
+def test_guojin_production_fails_closed_until_official_sidecar_is_ready():
+    config = CTPConfig(
+        mode="guojin_production",
+        profile="guojin_production",
+        front="tcp://127.0.0.1:1",
+        broker_id="1701",
+        user_id="demo",
+        password="secret",
+        instruments=("au2610",),
+        bridge_token="bridge-secret",
+        sdk_version="production-v6.7.13",
+    )
+    bridge = SimNowBridge(config)
+    bridge.start()
+    payload = bridge.health_payload()
+    assert payload["status"] == "production_sdk_required"
+    assert payload["ready"] is False
+    assert "secret" not in str(payload)
