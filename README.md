@@ -127,6 +127,12 @@ CHINA_SOURCE_TIMEOUT_MS=8000
 
 请先核对并遵守 [Choice 用户协议](https://choice.eastmoney.com/html/userprotocol/userprotocol.html) 及 iFinD/数据供应商的授权和再分发条款；协议未允许的网页爬取、批量转载、反向工程或自动下单不会由本项目启用。
 
+### 逐项接入状态
+
+页面新增“数据接入中心 · 按顺序启用”区块，并提供只读接口 `/api/v1/sources/status`。它按 SimNow 仿真、交易所公开延时、iFinD/Choice 授权 API、CTP 生产 Bridge 四步返回 `ready`、`configured`、`partial`、`needs_setup` 或 `needs_authorization` 状态、官方入口和下一步操作。接口只返回布尔配置结果，不返回任何密钥、账号、密码或完整前置地址。
+
+当前默认可用的是上期所公开延时 JSON（无 Key、约 60 秒轮询）以及已存在的免费国际/资讯适配器；SimNow 与 CTP 生产必须先在本机或受信主机启动 Bridge，iFinD/Choice 必须取得官方令牌和允许使用的 HTTPS API 地址。配置任一项后刷新页面即可看到状态由“待配置”变为“已接入/已接入一部分”，真实报价仍由原适配器按时间戳、币种和许可状态单独标注。
+
 ### 私人版完整接入流程
 
 私人版默认关闭，只有完成下面的配置后才会向当前浏览器会话返回本人行情。整个流程不需要把期货账户密码放进网页或 EdgeOne。
