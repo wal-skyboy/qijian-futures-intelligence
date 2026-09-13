@@ -88,3 +88,33 @@ export const publicAuthSchema = {
   challengeColumns: ['id', 'phone_e164', 'code_hash', 'expires_at', 'attempts', 'consumed_at', 'last_sent_at', 'created_at'] as const,
   sessionColumns: ['token_hash', 'user_id', 'expires_at', 'created_at', 'last_seen_at'] as const,
 };
+
+/** Privacy-first visitor metrics. The daily key is an HMAC scoped to the
+ * Beijing day; raw browser identifiers, IP addresses and user agents are not
+ * persisted. */
+export const visitorAnalyticsSchemaSql = `
+CREATE TABLE IF NOT EXISTS visitor_daily_stats (
+  day TEXT PRIMARY KEY,
+  page_views INTEGER NOT NULL DEFAULT 0,
+  unique_visitors INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_visitor_daily_stats_day
+ON visitor_daily_stats (day DESC);
+
+CREATE TABLE IF NOT EXISTS visitor_daily_keys (
+  day TEXT NOT NULL,
+  visitor_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (day, visitor_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_visitor_daily_keys_day
+ON visitor_daily_keys (day);`;
+
+export const visitorAnalyticsSchema = {
+  tables: ['visitor_daily_stats', 'visitor_daily_keys'] as const,
+  statsColumns: ['day', 'page_views', 'unique_visitors', 'updated_at'] as const,
+  keyColumns: ['day', 'visitor_hash', 'created_at'] as const,
+};

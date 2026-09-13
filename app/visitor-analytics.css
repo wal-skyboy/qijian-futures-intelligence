@@ -1,0 +1,47 @@
+.privacy-analytics{margin-top:18px;overflow:hidden;border-color:rgba(21,149,111,.3);background:linear-gradient(135deg,rgba(21,149,111,.06),var(--panel) 48%)}
+.privacy-status{font-size:9px;padding:5px 8px;border-radius:10px;border:1px solid var(--line);white-space:nowrap}
+.privacy-status.granted{color:var(--green);border-color:rgba(21,149,111,.45);background:rgba(21,149,111,.1)}
+.privacy-status.declined{color:var(--muted)}
+.privacy-status.required{color:var(--amber);border-color:rgba(217,155,56,.5);background:rgba(217,155,56,.08)}
+.privacy-analytics-body{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr);gap:16px;padding:16px 18px;border-bottom:1px solid var(--line)}
+.privacy-copy b{display:block;font-size:11px;color:var(--text);margin-bottom:7px}
+.privacy-copy p,.privacy-copy small{display:block;color:var(--muted);font-size:9px;line-height:1.7;margin:0}
+.privacy-copy small{margin-top:9px;color:var(--amber)}
+.privacy-controls{padding:12px;border:1px solid var(--line);border-radius:7px;background:rgba(8,12,16,.14)}
+.privacy-controls-head{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:10px}
+.privacy-controls-head span{color:var(--muted)}
+.privacy-controls-head strong{color:var(--text);font-size:10px}
+.privacy-controls p{color:var(--muted);font-size:9px;line-height:1.6;margin:9px 0 0}
+.privacy-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.privacy-actions button,.privacy-summary-head button,.privacy-consent-banner button{height:30px;padding:0 10px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--text);font-size:9px;cursor:pointer}
+.privacy-actions button.primary,.privacy-summary-head button,.privacy-consent-banner button.primary{background:#b78131;color:#fff;border-color:#b78131}
+.privacy-message{display:block;color:var(--amber);font-size:8px;line-height:1.5;margin-top:9px}
+.privacy-summary{padding:14px 18px;border-bottom:1px solid var(--line)}
+.privacy-summary-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.privacy-summary-head>div{display:flex;flex-direction:column;gap:4px}
+.privacy-summary-head b{font-size:11px}
+.privacy-summary-head small{color:var(--muted);font-size:8px}
+.privacy-summary-head button{height:28px;white-space:nowrap}
+.privacy-summary-head button:disabled{opacity:.55;cursor:wait}
+.privacy-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:11px}
+.privacy-summary-grid div{display:flex;flex-direction:column;gap:5px;padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.privacy-summary-grid b{font:19px Georgia;color:var(--green)}
+.privacy-summary-grid span{color:var(--muted);font-size:8px}
+.privacy-summary-note,.privacy-summary-locked{display:block;color:var(--muted);font-size:8px;line-height:1.6;margin-top:10px}
+.privacy-foot{padding:11px 18px;color:var(--muted);font-size:8px;line-height:1.6}
+.privacy-consent-banner{position:fixed;left:calc(var(--sidebar-width) + 18px);right:18px;bottom:16px;z-index:55;display:flex;justify-content:space-between;gap:16px;align-items:center;padding:12px 14px;border:1px solid rgba(217,155,56,.5);border-radius:8px;background:rgba(25,29,35,.96);box-shadow:0 10px 32px rgba(0,0,0,.3);color:var(--text);font-size:10px}
+.privacy-consent-banner>div:first-child{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
+.privacy-consent-banner strong{color:var(--amber);white-space:nowrap}
+.privacy-consent-banner span{color:#d9dce0;line-height:1.5}
+.privacy-consent-banner a{color:var(--amber);text-decoration:none;white-space:nowrap}
+.privacy-consent-banner>div:last-child{display:flex;gap:8px;flex:0 0 auto}
+@media(max-width:700px){
+ .privacy-analytics-body{grid-template-columns:1fr;padding:14px}
+ .privacy-summary{padding:14px}
+ .privacy-summary-grid{grid-template-columns:1fr 1fr}
+ .privacy-foot{padding:11px 14px}
+ .privacy-consent-banner{left:12px;right:12px;bottom:12px;display:block;padding:12px}
+ .privacy-consent-banner>div:first-child{display:block;margin-bottom:10px}
+ .privacy-consent-banner strong,.privacy-consent-banner span,.privacy-consent-banner a{display:block;margin-bottom:5px}
+ .privacy-consent-banner>div:last-child{justify-content:flex-end}
+}
