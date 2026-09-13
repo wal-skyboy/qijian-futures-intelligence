@@ -38,10 +38,45 @@
 .roadmap-100-locked{border-color:rgba(220,91,91,.32)!important}
 .roadmap-100-locked>div span{color:var(--red)}
 .roadmap-100-foot{display:flex;justify-content:space-between;gap:12px;border-top:1px solid var(--line);margin-top:12px;padding-top:9px;color:var(--muted);font-size:8px;line-height:1.45}
+.roadmap-100-summary>div.free{border-color:rgba(21,149,111,.45);background:rgba(21,149,111,.08)}
+.roadmap-100-summary>div.free b{color:var(--green)}
+.roadmap-export{border:1px solid rgba(217,155,56,.45);background:transparent;color:var(--amber);border-radius:4px;padding:5px 8px;font-size:9px;cursor:pointer;white-space:nowrap}
+.roadmap-export:hover,.roadmap-export:focus-visible{background:rgba(217,155,56,.12);outline:0}
+.roadmap-free-hero{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;margin-top:13px;padding:15px 16px;border:1px solid rgba(21,149,111,.32);border-radius:6px;background:linear-gradient(110deg,rgba(21,149,111,.13),rgba(217,155,56,.06))}
+.roadmap-free-kicker{display:flex;align-items:center;gap:6px;color:var(--green);font-size:9px;letter-spacing:.04em;text-transform:uppercase}
+.roadmap-free-kicker i{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(21,149,111,.15)}
+.roadmap-free-hero h3{margin:7px 0 5px;font:18px Georgia,"Songti SC";color:var(--text)}
+.roadmap-free-hero p{max-width:780px;margin:0;color:var(--muted);font-size:9px;line-height:1.6}
+.roadmap-free-hero button{margin-top:10px;border:0;background:var(--green);color:#07110e;border-radius:4px;padding:6px 9px;font-size:9px;font-weight:600;cursor:pointer}
+.roadmap-free-hero button:hover,.roadmap-free-hero button:focus-visible{filter:brightness(1.08);outline:2px solid rgba(21,149,111,.24);outline-offset:2px}
+.roadmap-free-metrics{display:grid;grid-template-columns:repeat(3,minmax(70px,1fr));gap:7px;min-width:235px}
+.roadmap-free-metrics>div{padding:9px 8px;border:1px solid rgba(21,149,111,.25);border-radius:4px;text-align:center;background:rgba(8,12,16,.08)}
+.roadmap-free-metrics b{display:block;font:17px Georgia;color:var(--green)}
+.roadmap-free-metrics span{display:block;margin-top:3px;color:var(--muted);font-size:8px}
+.roadmap-scope-toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:12px;padding:9px 10px;border:1px solid var(--line);border-radius:5px;background:rgba(8,12,16,.08)}
+.roadmap-scope-toolbar>span{color:var(--muted);font-size:8px;margin-right:2px}
+.roadmap-scope-toolbar button{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:4px;padding:5px 7px;font-size:8px;cursor:pointer}
+.roadmap-scope-toolbar button:hover,.roadmap-scope-toolbar button:focus-visible{border-color:rgba(217,155,56,.5);color:var(--amber);outline:0}
+.roadmap-scope-toolbar button.selected{border-color:rgba(21,149,111,.55);background:rgba(21,149,111,.12);color:var(--green)}
+.roadmap-scope-toolbar small{margin-left:auto;color:var(--muted);font-size:8px}
+.roadmap-free-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
+.roadmap-free-group{min-width:0;border:1px solid rgba(21,149,111,.27);border-radius:5px;padding:10px;background:rgba(8,12,16,.08)}
+.roadmap-free-group>header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding-bottom:8px}
+.roadmap-free-group>header>div{min-width:0}
+.roadmap-free-group>header b{display:block;color:var(--text);font-size:10px}
+.roadmap-free-group>header small{display:block;margin-top:4px;color:var(--muted);font-size:7px;line-height:1.45}
+.roadmap-free-group>header a,.roadmap-free-group li>a{color:var(--amber);font-size:8px;text-decoration:none;white-space:nowrap}
+.roadmap-free-group>header a:hover,.roadmap-free-group>header a:focus-visible,.roadmap-free-group li>a:hover,.roadmap-free-group li>a:focus-visible{text-decoration:underline;outline:0}
+.roadmap-free-group ol{list-style:none;margin:0;padding:0}
+.roadmap-free-group li{display:grid;grid-template-columns:17px minmax(0,1fr) auto;align-items:start;gap:6px;padding:7px 0}
+.roadmap-free-group li+li{border-top:1px solid rgba(125,139,150,.16)}
+.roadmap-free-check{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:rgba(21,149,111,.15);color:var(--green);font-size:9px}
+.roadmap-free-group li b{display:block;font-size:8px;line-height:1.35;color:var(--text);overflow-wrap:anywhere}
+.roadmap-free-group li small{display:block;margin-top:3px;color:var(--muted);font-size:7px;line-height:1.45;overflow-wrap:anywhere}
 .decision-copy{border:1px solid rgba(217,155,56,.4);background:transparent;color:var(--amber);border-radius:4px;padding:4px 7px;font-size:8px;cursor:pointer;white-space:nowrap}
 .decision-copy:hover,.decision-copy:focus-visible{background:rgba(217,155,56,.12);outline:0}
 .back-to-top{position:fixed;right:18px;bottom:18px;z-index:38;border:1px solid rgba(217,155,56,.5);background:var(--panel);color:var(--amber);border-radius:999px;padding:8px 11px;font-size:10px;box-shadow:0 7px 24px rgba(0,0,0,.22);cursor:pointer}
 .back-to-top:hover,.back-to-top:focus-visible{background:rgba(217,155,56,.14);outline:2px solid rgba(217,155,56,.24);outline-offset:2px}
 .refresh button:disabled{opacity:.6;cursor:wait}
 @media(max-width:1100px){.roadmap-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.roadmap-100-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:700px){.accuracy-head-actions{justify-content:flex-start;margin-top:8px}.roadmap-panel{padding:14px;margin-left:0;margin-right:0}.roadmap-panel .sources-intro{display:block}.roadmap-panel .sources-intro>span{display:inline-block;margin-top:8px}.roadmap-actions{justify-content:flex-start;margin-top:8px}.roadmap-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.roadmap-grid article{padding:8px}.roadmap-grid article>div{grid-template-columns:21px minmax(0,1fr)}.roadmap-grid article>div span{grid-column:2}.roadmap-grid article p{min-height:0}.roadmap-100-panel{padding:14px;margin-left:0;margin-right:0}.roadmap-100-panel .sources-intro{display:block}.roadmap-100-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.roadmap-100-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.roadmap-100-grid article{padding:7px}.roadmap-100-grid article>div{grid-template-columns:24px minmax(0,1fr)}.roadmap-100-grid article>div span{grid-column:2}.roadmap-100-foot{display:block}.roadmap-100-foot span{display:block}.roadmap-100-foot span+span{margin-top:4px}.decision-copy{order:3}.back-to-top{right:12px;bottom:12px}}
+@media(max-width:700px){.accuracy-head-actions{justify-content:flex-start;margin-top:8px}.roadmap-panel{padding:14px;margin-left:0;margin-right:0}.roadmap-panel .sources-intro{display:block}.roadmap-panel .sources-intro>span{display:inline-block;margin-top:8px}.roadmap-actions{justify-content:flex-start;margin-top:8px}.roadmap-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.roadmap-grid article{padding:8px}.roadmap-grid article>div{grid-template-columns:21px minmax(0,1fr)}.roadmap-grid article>div span{grid-column:2}.roadmap-grid article p{min-height:0}.roadmap-100-panel{padding:14px;margin-left:0;margin-right:0}.roadmap-100-panel .sources-intro{display:block}.roadmap-100-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.roadmap-100-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.roadmap-100-grid article{padding:7px}.roadmap-100-grid article>div{grid-template-columns:24px minmax(0,1fr)}.roadmap-100-grid article>div span{grid-column:2}.roadmap-100-foot{display:block}.roadmap-100-foot span{display:block}.roadmap-100-foot span+span{margin-top:4px}.roadmap-free-hero{grid-template-columns:1fr;gap:12px}.roadmap-free-hero h3{font-size:16px}.roadmap-free-metrics{min-width:0}.roadmap-scope-toolbar{align-items:flex-start}.roadmap-scope-toolbar small{width:100%;margin:2px 0 0}.roadmap-free-groups{grid-template-columns:1fr}.roadmap-free-group li{grid-template-columns:17px minmax(0,1fr)}.roadmap-free-group li>a{grid-column:2;margin-top:4px}.decision-copy{order:3}.back-to-top{right:12px;bottom:12px}}
