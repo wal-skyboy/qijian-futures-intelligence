@@ -102,3 +102,32 @@
 .user-login-status-card .user-login-secondary:hover{background:rgba(200,156,255,.12)}
 @media(max-width:900px){.user-login-panel{grid-template-columns:1fr}.user-login-form,.user-login-status-card{min-height:0}}
 @media(max-width:700px){.top-actions .user-login-cta{min-width:34px;width:34px;padding:0}.top-actions .user-login-cta span{font-size:15px}.top-actions .user-login-cta{font-size:0}.user-login-panel{padding:14px}.user-login-copy h2{font-size:17px}.user-login-form{padding:12px}}
+
+/* Ordinary visitor accounts use a separate phone-OTP card; it never shares
+ * the private access-code session or the CTP permissions. */
+.user-account-stack{min-width:0;display:grid;gap:10px;align-content:stretch}
+.public-account-card,.owner-account-card{min-width:0;padding:14px;border:1px solid var(--line);border-radius:7px;background:rgba(12,16,22,.22)}
+.public-account-card{border-color:rgba(217,155,56,.3);background:rgba(217,155,56,.045)}
+.owner-account-card{border-color:rgba(200,156,255,.25);background:rgba(133,87,185,.05)}
+.public-state{color:#f0bf67}
+.public-state i{background:#f0bf67;box-shadow:0 0 7px rgba(240,191,103,.7)}
+.owner-state{color:#c89cff}
+.owner-state i{background:#c89cff;box-shadow:0 0 7px rgba(200,156,255,.7)}
+.public-auth-form{display:flex;flex-direction:column;gap:9px}
+.public-auth-form label{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:9px}
+.public-auth-form input{height:34px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--text);padding:0 10px;outline:0;font-size:11px}
+.public-auth-form input:focus{border-color:#d99b38;box-shadow:0 0 0 2px rgba(217,155,56,.18)}
+.public-code-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
+.public-code-button{height:34px;min-width:88px;border:1px solid #8b6128;border-radius:5px;background:rgba(217,155,56,.18);color:#f0bf67;padding:0 10px;font-size:9px;font-weight:600;cursor:pointer;white-space:nowrap}
+.public-code-button:hover{background:rgba(217,155,56,.3)}
+.public-code-button:disabled,.public-auth-form>button:disabled{opacity:.55;cursor:wait}
+.public-auth-form>button{height:32px;margin-top:1px;border:1px solid #8b6128;border-radius:5px;background:#956b2e;color:#fff;padding:0 13px;font-size:10px;font-weight:600;cursor:pointer}
+.public-auth-form>button:hover{background:#b78131}
+.public-auth-form small{color:var(--muted);font-size:8px;line-height:1.45}
+.public-consent{display:flex!important;flex-direction:row!important;align-items:flex-start;gap:7px;color:var(--muted)!important;line-height:1.45}
+.public-consent input{width:13px;height:13px;flex:none;margin:0;accent-color:#d99b38}
+.compact-status{min-height:0;padding:0;border:0;border-radius:0;background:transparent;justify-content:flex-start}
+.compact-status p{margin-top:6px}
+.compact-status>button{align-self:flex-start}
+@media(max-width:900px){.user-account-stack{grid-template-columns:1fr 1fr}.public-account-card,.owner-account-card{height:100%}}
+@media(max-width:700px){.user-account-stack{grid-template-columns:1fr}.public-account-card,.owner-account-card{padding:12px}.public-code-row{grid-template-columns:1fr}.public-code-button{width:100%}}
