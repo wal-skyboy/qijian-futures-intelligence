@@ -1,5 +1,5 @@
 import { onRequestGet } from '../../../../../../edgeone/cloud-functions/api/v1/private/ctp/board.js';
-import { runtimeEnv } from '../../../_runtime';
+import { runtimeEnv } from '../../../../_runtime';
 
 export const runtime = 'edge';
 
