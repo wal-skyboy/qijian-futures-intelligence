@@ -5,6 +5,11 @@ const DEFAULT_QUERY = '(gold OR bullion OR XAU OR silver OR XAG OR copper OR tin
 const DEFAULT_RSS_URL = 'https://news.google.com/rss/search';
 const DEFAULT_RSS_QUERY = 'gold OR silver OR copper OR tin OR "crude oil" OR dollar when:7d';
 const DEFAULT_EVENTS_TIMEOUT_MS = 1400;
+// This is a public economic-calendar feed, not an exchange-authorized quote feed.
+// GLOBAL_CALENDAR_URL can replace it with an official/licensed calendar when available.
+const DEFAULT_CALENDAR_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
+const DEFAULT_CALENDAR_NAME = '公开经济日历';
+const DEFAULT_CALENDAR_TTL_MS = 5 * 60_000;
 
 const ASSET_RULES = [
   { asset: '黄金', terms: /gold|bullion|xau|贵金属|黄金/i, tags: ['贵金属', '宏观'] },
@@ -19,6 +24,7 @@ const BULLISH_TERMS = /safe haven|risk-off|dovish|rate cut|cuts? rates?|yield (?
 const BEARISH_TERMS = /hawkish|rate hike|higher for longer|yield (?:rises?|jumps?|climbs?)|stronger dollar|dollar (?:rises?|strengthens?)|inventory (?:build|rises?|increase)|oversupply|sell[- ]?off|demand (?:falls?|slows?)|recession|tightening|加息|收益率上行|美元走强|库存增加|累库|供应过剩|下跌|走弱/i;
 
 let cached = { key: '', expiresAt: 0, payload: null };
+let calendarCached = { key: '', expiresAt: 0, rows: [], error: '' };
 
 function nowIso() {
   return new Date().toISOString();
@@ -47,7 +53,11 @@ function parseDate(value) {
     const [, date, time] = gdelt;
     return new Date(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T${time.slice(0, 2)}:${time.slice(2, 4)}:${time.slice(4, 6)}Z`);
   }
-  const parsed = new Date(raw);
+  // Calendar feeds often publish a date without a timezone. Treat it as a
+  // Beijing calendar date so the displayed day does not shift at UTC midnight.
+  const dateOnly = raw.match(/^(\d{4}-\d{2}-\d{2})$/);
+  const localWithoutTimezone = raw.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/);
+  const parsed = new Date(dateOnly ? `${dateOnly[1]}T00:00:00+08:00` : localWithoutTimezone ? `${raw}+08:00` : raw);
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
@@ -76,6 +86,31 @@ function inferAsset(value) {
   return ASSET_RULES.find((rule) => rule.terms.test(source))?.asset || '黄金';
 }
 
+function relatedAssets(value, primary) {
+  const source = text(value);
+  const related = new Set([primary]);
+  if (/silver|xag|白银/i.test(source)) related.add('白银');
+  if (/gold|bullion|xau|黄金/i.test(source)) related.add('黄金');
+  if (/copper|cuprum|铜/i.test(source)) related.add('铜');
+  if (/tin|锡/i.test(source)) related.add('锡');
+  if (/crude|wti|brent|oil|原油|石油/i.test(source)) related.add('原油');
+  if (/dollar|dxy|usd|美元|汇率/i.test(source)) related.add('美元');
+  // Central-bank, US macro and real-rate releases are shared precious-metal
+  // catalysts even when the feed title does not say “gold” or “silver”.
+  if (/fed|fomc|cpi|ppi|payroll|employment|jobs?|inflation|interest rate|yield|gdp|pmi|retail sales|industrial production|housing|consumer confidence|manufacturing|nonfarm|央行|利率|通胀|就业|非农|收益率|国内生产总值|零售销售|工业增加值|制造业/i.test(source)) {
+    related.add('黄金');
+    related.add('白银');
+    related.add('美元');
+  }
+  // China demand releases are most directly relevant to industrial metals.
+  if (/china|chinese|cny|yuan|中国|人民币|制造业|工业增加值|零售销售|pmi/i.test(source)) {
+    related.add('铜');
+    related.add('锡');
+  }
+  if (/soybean|corn|usda|大豆|玉米|农业|农产品/i.test(source)) related.add(primary);
+  return [...related];
+}
+
 function inferTags(value, asset) {
   const source = text(value);
   const rule = ASSET_RULES.find((candidate) => candidate.asset === asset);
@@ -100,7 +135,11 @@ function classify(value, rawSide) {
 function sourceName(raw, sourceUrl) {
   const explicit = text(raw?.source || raw?.publisher || raw?.domain);
   if (explicit) return explicit.replace(/^www\./i, '');
-  try { return new URL(sourceUrl).hostname.replace(/^www\./i, ''); } catch { return 'GDELT'; }
+  try {
+    const hostname = new URL(sourceUrl).hostname.replace(/^www\./i, '');
+    if (/faireconomy\.media|forexfactory/i.test(hostname)) return DEFAULT_CALENDAR_NAME;
+    return hostname;
+  } catch { return 'GDELT'; }
 }
 
 function sourceUrlFor(raw, providerUrl) {
@@ -115,6 +154,22 @@ function firstText(raw, keys) {
     if (value) return value;
   }
   return '';
+}
+
+function impactValue(value, side, scheduled) {
+  const numeric = number(value, null);
+  if (numeric !== null) return numeric;
+  const label = text(value).toLowerCase();
+  if (/high|重要|重大|红色|高/.test(label)) return 88;
+  if (/medium|中等|橙色|中/.test(label)) return 72;
+  if (/low|次要|黄色|低/.test(label)) return 48;
+  return scheduled ? 58 : side === '中性' ? 52 : 68;
+}
+
+function isKeyCalendarItem(item) {
+  if (!item?.scheduled) return false;
+  if (item.impact >= 68) return true;
+  return /fomc|fed|ecb|boe|boj|cpi|ppi|payroll|employment|unemployment|inflation|gdp|pmi|retail sales|industrial production|interest rate|rate decision|central bank|opec|eia|crude oil inventories|库存|央行|利率|通胀|非农|就业|国内生产总值|工业增加值|零售销售|制造业/i.test(item.title);
 }
 
 function normaliseItem(raw, index, providerUrl) {
@@ -135,16 +190,18 @@ function normaliseItem(raw, index, providerUrl) {
   const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(scheduledRaw);
   const publishedAt = published.toISOString();
   const eventAt = eventDate.toISOString();
-  const asset = text(raw.asset) && ASSET_RULES.some((rule) => rule.asset === raw.asset) ? raw.asset : inferAsset(`${title} ${summary}`);
-  const side = classify(`${title} ${summary}`, raw.side || raw.sentiment);
-  const impact = clamp(number(raw.impact ?? raw.impact_score, side === '中性' ? 52 : 68), 35, 98);
-  const confidence = clamp(number(raw.confidence, side === '中性' ? 56 : 70), 35, 96);
+  const context = `${title} ${summary} ${text(raw.country || raw.currency || raw.region)}`;
+  const asset = text(raw.asset) && ASSET_RULES.some((rule) => rule.asset === raw.asset) ? raw.asset : inferAsset(context);
+  const side = classify(context, raw.side || raw.sentiment);
+  const impact = clamp(impactValue(raw.impact ?? raw.impact_score ?? raw.importance, side, scheduled), 35, 98);
+  const confidence = clamp(number(raw.confidence, scheduled ? 78 : side === '中性' ? 56 : 70), 35, 96);
   const source = sourceName(raw, sourceUrl);
   const tags = Array.isArray(raw.tags) ? raw.tags.map(text).filter(Boolean).slice(0, 4) : inferTags(`${title} ${summary}`, asset);
   const finalSummary = summary || `${asset}相关全球资讯已抓取；请结合价格、美元、实际利率、库存和持仓交叉验证。`;
   return {
     id: number(raw.id, stableId(`${sourceUrl}|${title}`, index)),
     asset,
+    relatedAssets: relatedAssets(context, asset),
     side,
     title: title || `${asset}全球关键事件`,
     summary: finalSummary,
@@ -176,30 +233,39 @@ function timelineFor(items) {
   const lowerBound = now - WINDOW_MS;
   const upperBound = now + WINDOW_MS;
   const seen = new Set();
-  return items.map((item) => {
+  const rows = [];
+  items.forEach((item) => {
     const eventAt = item.scheduledAt || item.eventAt || item.publishedAt;
     const timestamp = Date.parse(eventAt || '');
-    if (!Number.isFinite(timestamp) || timestamp < lowerBound || timestamp > upperBound) return null;
-    const key = `${item.sourceUrl}|${item.title}|${eventAt}`;
-    if (seen.has(key)) return null;
-    seen.add(key);
+    if (!Number.isFinite(timestamp) || timestamp < lowerBound || timestamp > upperBound) return;
     const eventDate = new Date(timestamp);
-    return {
-      id: item.id,
-      date: shanghaiDate(eventDate),
-      eventAt: eventDate.toISOString(),
-      time: item.time || '',
-      window: timestamp >= now ? '未来7天' : '过去7天',
-      scheduled: Boolean(item.scheduled || item.scheduledAt || timestamp >= now),
-      side: item.side,
-      impact: item.impact >= 80 ? '高' : '中',
-      title: item.title,
-      assets: item.asset,
-      why: item.summary,
-      source: item.source,
-      sourceUrl: item.sourceUrl,
-    };
-  }).filter(Boolean);
+    const assetNames = Array.isArray(item.relatedAssets) && item.relatedAssets.length ? item.relatedAssets : [item.asset];
+    assetNames.forEach((assetName, assetIndex) => {
+      const key = `${item.sourceUrl}|${item.title}|${eventAt}|${assetName}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      rows.push({
+        id: assetIndex ? stableId(`${item.id}|${assetName}`, assetIndex) : item.id,
+        date: shanghaiDate(eventDate),
+        eventAt: eventDate.toISOString(),
+        time: item.time || '',
+        window: timestamp >= now ? '未来7天' : '过去7天',
+        scheduled: Boolean(item.scheduled || item.scheduledAt || timestamp >= now),
+        side: item.side,
+        impact: item.impact >= 80 ? '高' : '中',
+        title: item.title,
+        assets: assetName,
+        why: item.summary,
+        source: item.source,
+        sourceUrl: item.sourceUrl,
+      });
+    });
+  });
+  return rows.sort((a, b) => {
+    if (a.window !== b.window) return a.window === '未来7天' ? -1 : 1;
+    const difference = Date.parse(a.eventAt) - Date.parse(b.eventAt);
+    return a.window === '未来7天' ? difference : -difference;
+  });
 }
 
 function articleRows(payload) {
@@ -268,12 +334,64 @@ async function feedRows(url, timeoutMs) {
   }
 }
 
+function calendarSource(env) {
+  const configured = text(env?.GLOBAL_CALENDAR_URL);
+  if (configured) {
+    return {
+      url: configured,
+      name: text(env?.GLOBAL_CALENDAR_NAME) || '授权经济日历',
+      mode: 'configured',
+    };
+  }
+  return { url: DEFAULT_CALENDAR_URL, name: DEFAULT_CALENDAR_NAME, mode: 'public' };
+}
+
+async function calendarRowsCached(source, timeoutMs, forceRefresh) {
+  const current = Date.now();
+  // The public feed asks consumers not to download more than twice in five
+  // minutes. Keep its own cache even when the user manually refreshes news.
+  const canUseCache = calendarCached.key === source.url && current < calendarCached.expiresAt;
+  const bypass = forceRefresh && source.mode === 'configured';
+  if (canUseCache && !bypass) {
+    return {
+      rows: calendarCached.rows,
+      error: calendarCached.error,
+      fetchedAt: calendarCached.fetchedAt || '',
+      expiresAt: calendarCached.expiresAt,
+      cached: true,
+    };
+  }
+  try {
+    const rows = await feedRows(source.url, timeoutMs);
+    calendarCached = {
+      key: source.url,
+      rows,
+      error: '',
+      fetchedAt: nowIso(),
+      expiresAt: Date.now() + DEFAULT_CALENDAR_TTL_MS,
+    };
+    return { rows, error: '', fetchedAt: calendarCached.fetchedAt, expiresAt: calendarCached.expiresAt, cached: false };
+  } catch (cause) {
+    const error = cause instanceof Error ? cause.message : 'calendar provider error';
+    // Short negative caching prevents a failing public feed from being hit on
+    // every page refresh while still recovering promptly.
+    calendarCached = {
+      key: source.url,
+      rows: [],
+      error,
+      fetchedAt: nowIso(),
+      expiresAt: Date.now() + 60_000,
+    };
+    return { rows: [], error, fetchedAt: calendarCached.fetchedAt, expiresAt: calendarCached.expiresAt, cached: false };
+  }
+}
+
 export async function globalEvents(env = {}) {
   const configured = text(env?.GLOBAL_EVENTS_URL);
-  const calendarConfigured = text(env?.GLOBAL_CALENDAR_URL);
+  const calendar = calendarSource(env);
   const forceRefresh = text(env?.EVENTS_FORCE_REFRESH) === '1';
   const providerUrl = configured || DEFAULT_GDELT_URL;
-  const cacheKey = `${providerUrl}|${calendarConfigured}|${configured ? 'configured' : DEFAULT_QUERY}|7d`;
+  const cacheKey = `${providerUrl}|${calendar.url}|${configured ? 'configured' : DEFAULT_QUERY}|7d`;
   const current = Date.now();
   if (!forceRefresh && cached.payload && cached.key === cacheKey && current < cached.expiresAt) {
     return { ...cached.payload, sync: { ...cached.payload.sync, cached: true, next_refresh_at: new Date(cached.expiresAt).toISOString() } };
@@ -287,64 +405,70 @@ export async function globalEvents(env = {}) {
     // two public feeds below are requested in parallel.
     const requestedTimeout = Number(env?.EVENTS_FETCH_TIMEOUT_MS) || DEFAULT_EVENTS_TIMEOUT_MS;
     const timeoutMs = Math.min(Math.max(requestedTimeout, 500), 2500);
-    let sourceUrl = providerUrl;
-    let providerName = configured ? 'configured_events' : 'gdelt+google_news';
-    let historyRows = [];
-    let calendarRows = [];
-    let calendarError = '';
-    if (configured) {
-      historyRows = await feedRows(providerUrl, timeoutMs);
-    } else {
-      const gdeltUrl = `${providerUrl}?${new URLSearchParams({
-        query: DEFAULT_QUERY, mode: 'artlist', format: 'json', maxrecords: '80', sort: 'datedesc', timespan: '7d',
-      }).toString()}`;
-      const rssUrl = `${DEFAULT_RSS_URL}?${new URLSearchParams({ q: DEFAULT_RSS_QUERY, hl: 'en-US', gl: 'US', ceid: 'US:en' }).toString()}`;
-      const [gdeltResult, rssResult] = await Promise.allSettled([
-        fetchWithTimeout(gdeltUrl, timeoutMs).then(async (response) => ({
-          ok: response.ok,
-          status: response.status,
-          rows: response.ok ? articleRows(await response.json()) : [],
-        })),
-        fetchWithTimeout(rssUrl, timeoutMs, 'application/rss+xml, application/xml, text/xml').then(async (response) => ({
-          ok: response.ok,
-          status: response.status,
-          rows: response.ok ? rssRows(await response.text()) : [],
-        })),
-      ]);
-      const gdelt = gdeltResult.status === 'fulfilled' ? gdeltResult.value : null;
-      const rss = rssResult.status === 'fulfilled' ? rssResult.value : null;
-      historyRows = [...(gdelt?.rows || []), ...(rss?.rows || [])];
-      if (!historyRows.length) {
+    const sourceUrl = providerUrl;
+    const providerName = configured ? `configured_events+${calendar.mode}_calendar` : `gdelt+google_news+${calendar.mode}_calendar`;
+    const historyResult = (async () => {
+      try {
+        if (configured) {
+          const rows = await feedRows(providerUrl, timeoutMs);
+          return { rows, error: rows.length ? '' : 'history feed empty' };
+        }
+        const gdeltUrl = `${providerUrl}?${new URLSearchParams({
+          query: DEFAULT_QUERY, mode: 'artlist', format: 'json', maxrecords: '80', sort: 'datedesc', timespan: '7d',
+        }).toString()}`;
+        const rssUrl = `${DEFAULT_RSS_URL}?${new URLSearchParams({ q: DEFAULT_RSS_QUERY, hl: 'en-US', gl: 'US', ceid: 'US:en' }).toString()}`;
+        const [gdeltResult, rssResult] = await Promise.allSettled([
+          fetchWithTimeout(gdeltUrl, timeoutMs).then(async (response) => ({
+            ok: response.ok,
+            status: response.status,
+            rows: response.ok ? articleRows(await response.json()) : [],
+          })),
+          fetchWithTimeout(rssUrl, timeoutMs, 'application/rss+xml, application/xml, text/xml').then(async (response) => ({
+            ok: response.ok,
+            status: response.status,
+            rows: response.ok ? rssRows(await response.text()) : [],
+          })),
+        ]);
+        const gdelt = gdeltResult.status === 'fulfilled' ? gdeltResult.value : null;
+        const rss = rssResult.status === 'fulfilled' ? rssResult.value : null;
+        const rows = [...(gdelt?.rows || []), ...(rss?.rows || [])];
+        if (rows.length) return { rows, error: '' };
         const gdeltStatus = gdelt?.status ? `gdelt ${gdelt.status}` : 'gdelt timeout';
         const rssStatus = rss?.status ? `rss ${rss.status}` : 'rss timeout';
-        throw new Error(`events providers unavailable (${gdeltStatus}; ${rssStatus})`);
-      }
-    }
-    if (calendarConfigured) {
-      try {
-        calendarRows = await feedRows(calendarConfigured, timeoutMs);
+        return { rows: [], error: `events providers unavailable (${gdeltStatus}; ${rssStatus})` };
       } catch (cause) {
-        calendarError = cause instanceof Error ? cause.message : 'calendar provider error';
+        return { rows: [], error: cause instanceof Error ? cause.message : 'events provider error' };
       }
-    }
+    })();
+    const calendarResult = calendarRowsCached(calendar, Math.min(Math.max(Number(env?.CALENDAR_FETCH_TIMEOUT_MS) || 3500, 700), 6000), forceRefresh);
+    const [history, calendarData] = await Promise.all([historyResult, calendarResult]);
+    const historyRows = history.rows;
+    const calendarRows = calendarData.rows;
+    const historyError = history.error;
+    const calendarError = calendarData.error;
     const historyItems = historyRows.map((row, index) => normaliseItem(row, index, sourceUrl)).filter(Boolean);
-    const calendarItems = calendarRows.map((row, index) => normaliseItem(row, index, calendarConfigured)).filter(Boolean);
+    const calendarItems = calendarRows.map((row, index) => normaliseItem(row, index, calendar.url)).filter(Boolean);
     const items = dedupe(historyItems.filter((item) => !item.scheduled));
-    const scheduledItems = calendarItems.filter((item) => item.scheduled);
+    const scheduledItems = calendarItems.filter(isKeyCalendarItem);
     const timeline = timelineFor([...items, ...scheduledItems]);
     const historyCount = items.length;
     const futureCount = timeline.filter((item) => item.window === '未来7天').length;
     const status = items.length || futureCount
-      ? ((calendarConfigured && calendarError) || (!calendarConfigured && !futureCount) ? 'partial' : 'ok')
-      : 'empty';
+      ? (historyError || calendarError ? 'partial' : 'ok')
+      : 'provider_error';
+    const calendarNextRefreshAt = new Date(calendarData.expiresAt || Date.now() + DEFAULT_CALENDAR_TTL_MS).toISOString();
     const result = {
       status,
       provider: providerName,
       fetched_at: fetchedAt,
       source_url: sourceUrl,
-      calendar_source_url: calendarConfigured || null,
-      calendar_configured: Boolean(calendarConfigured),
+      calendar_source_url: calendar.url,
+      calendar_source_name: calendar.name,
+      calendar_mode: calendar.mode,
+      calendar_fetched_at: calendarData.fetchedAt || null,
+      calendar_configured: true,
       calendar_error: calendarError || undefined,
+      history_error: historyError || undefined,
       history_window_days: 7,
       future_window_days: 7,
       items,
@@ -359,8 +483,13 @@ export async function globalEvents(env = {}) {
         history_count: historyCount,
         future_count: futureCount,
         calendar_item_count: scheduledItems.length,
-        calendar_configured: Boolean(calendarConfigured),
+        calendar_configured: true,
+        calendar_mode: calendar.mode,
+        calendar_source_name: calendar.name,
+        calendar_fetched_at: calendarData.fetchedAt || undefined,
+        calendar_next_refresh_at: calendarNextRefreshAt,
         calendar_error: calendarError || undefined,
+        history_error: historyError || undefined,
         stale: false,
         next_refresh_at: new Date(Date.now() + CACHE_TTL_MS).toISOString(),
       },
@@ -370,11 +499,14 @@ export async function globalEvents(env = {}) {
   } catch (cause) {
     return {
       status: 'provider_error',
-      provider: configured ? 'configured_events' : 'gdelt+rss',
+      provider: configured ? `configured_events+${calendar.mode}_calendar` : `gdelt+google_news+${calendar.mode}_calendar`,
       fetched_at: fetchedAt,
       source_url: providerUrl,
-      calendar_source_url: calendarConfigured || null,
-      calendar_configured: Boolean(calendarConfigured),
+      calendar_source_url: calendar.url,
+      calendar_source_name: calendar.name,
+      calendar_mode: calendar.mode,
+      calendar_fetched_at: calendarCached.key === calendar.url ? calendarCached.fetchedAt || null : null,
+      calendar_configured: true,
       calendar_error: cause instanceof Error ? cause.message : 'events provider error',
       history_window_days: 7,
       future_window_days: 7,
@@ -391,7 +523,10 @@ export async function globalEvents(env = {}) {
         history_count: 0,
         future_count: 0,
         calendar_item_count: 0,
-        calendar_configured: Boolean(calendarConfigured),
+        calendar_configured: true,
+        calendar_mode: calendar.mode,
+        calendar_source_name: calendar.name,
+        calendar_next_refresh_at: new Date(Date.now() + DEFAULT_CALENDAR_TTL_MS).toISOString(),
         calendar_error: cause instanceof Error ? cause.message : 'events provider error',
         stale: true,
         next_refresh_at: new Date(Date.now() + 15_000).toISOString(),

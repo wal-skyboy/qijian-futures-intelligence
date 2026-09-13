@@ -12,7 +12,7 @@
 
 ## 免费数据组合（当前默认）
 
-默认 `MARKET_PROVIDER=free`：GDELT 新闻（`/api/v1/news/{symbol}`、`/api/v1/events`）、FRED 宏观（`/api/v1/macro`）、CFTC COT（`/api/v1/cot/{contract}`）和 Alpha Vantage 市场适配器（`/api/v1/market/{symbol}`）。`/api/v1/events` 每次成功抓取后缓存 60 秒，默认同时轮询 GDELT 与 Google News 的过去 7 天历史窗口，按来源、标题和时间去重并归一化品种、多空、影响、置信度和原文链接；前端的手动/自动刷新会带 `fresh=1` 和时间戳绕过浏览器/CDN 缓存，并在失败时明确显示“本地回退”。未来 7 天不能由新闻流推断，需配置 `GLOBAL_CALENDAR_URL` 指向官方/授权 JSON 或 RSS 日历；字段可使用 `items`、`events`、`articles`、`calendar` 或 `results`，沿用 `title`、`summary`、`url`、`publishedAt`、`scheduledAt`、`eventAt`、`eventDate`、`date`、`asset`、`side` 等字段。页面会把未来条目标成“计划窗口”，并显示日历是否接入、错误状态与下次刷新时间；未配置时只保留明确的待核验提示，不伪造未来事件。配置免费 Alpha Vantage Key 后，黄金/白银使用官方文档标注的 live spot，美元使用 USD/CNY 外汇实时汇率，铜与 WTI 使用日频参考；锡仍明确标为需要交易所授权。没有 Key 或 Provider 失败时返回带 `data_mode` 的明确回退状态，绝不把 Demo 数值伪装成实时交易所价格。
+默认 `MARKET_PROVIDER=free`：GDELT 新闻（`/api/v1/news/{symbol}`、`/api/v1/events`）、FRED 宏观（`/api/v1/macro`）、CFTC COT（`/api/v1/cot/{contract}`）和 Alpha Vantage 市场适配器（`/api/v1/market/{symbol}`）。`/api/v1/events` 默认同时轮询 GDELT 与 Google News 的过去 7 天历史窗口，并接入一个带来源标识的公开经济日历（[公开日历源](https://nfs.faireconomy.media/ff_calendar_thisweek.json)）覆盖未来 7 天；配置 `GLOBAL_CALENDAR_URL` 后可切换到官方/授权 JSON 或 RSS 日历。历史事件按来源、标题和时间去重，未来事件按高/中影响过滤，并全部归一化北京时间、品种、多空、影响、置信度和原文链接。历史新闻缓存 60 秒，公开日历单独缓存 5 分钟以避免过度请求；前端事件源单独每 5 分钟轮询，切回页面或点击“立即更新”也会刷新。页面明确区分“公开经济日历”和“授权日历”，显示来源、同步时间、错误状态与下次刷新时间；源失败时只保留明确标注的待核验窗口，不伪造未来事件。配置免费 Alpha Vantage Key 后，黄金/白银使用官方文档标注的 live spot，美元使用 USD/CNY 外汇实时汇率，铜与 WTI 使用日频参考；锡仍明确标为需要交易所授权。没有 Key 或 Provider 失败时返回带 `data_mode` 的明确回退状态，绝不把 Demo 数值伪装成实时交易所价格。
 
 ## 公开版与私有版
 
@@ -39,7 +39,9 @@ FRED_API_KEY=
 CFTC_APP_TOKEN=
 GLOBAL_EVENTS_URL=
 GLOBAL_CALENDAR_URL=
+GLOBAL_CALENDAR_NAME=
 EVENTS_FETCH_TIMEOUT_MS=8000
+CALENDAR_FETCH_TIMEOUT_MS=3500
 DOMESTIC_DELAYED_URL=
 DOMESTIC_DELAYED_TOKEN=
 PRIVATE_ACCESS_CODE=
