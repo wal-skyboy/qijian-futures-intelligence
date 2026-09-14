@@ -118,12 +118,14 @@ THS_CONTRACT_CODES={"au":"AU.SHF","ag":"AG.SHF","cu":"CU.SHF","sn":"SN.SHF","sc"
 THS_NEWS_FEED_URL=
 EASTMONEY_CHOICE_TOKEN=
 EASTMONEY_CHOICE_API_URL=
-EASTMONEY_CONTRACT_CODES=
+EASTMONEY_CONTRACT_CODES={"au":"AU0.SHF","ag":"AG0.SHF","cu":"CU0.SHF","sn":"SN0.SHF","sc":"SC0.INE"}
 EASTMONEY_NEWS_FEED_URL=
 CHINA_SOURCE_TIMEOUT_MS=8000
 ```
 
 `THS_IFIND_ACCESS_TOKEN` 使用同花顺 iFinD 官方账号生成的访问令牌；官方接口的实时行情地址、请求头和字段说明见 [iFinD API 手册](https://quantapi.51ifind.com/gwstatic/static/ds_web/quantapi-web/help-center/manual.html)，免费账户额度见 [iFinD 权限说明](https://quantapi.51ifind.com/gwstatic/static/ds_web/quantapi-web/help-center/permission.html)。东方财富的 Choice API 地址和权限由 Choice 产品提供，因此代码不会猜测或硬编码一个未公开的 REST 地址；将 Choice 控制台/合同中给出的 HTTPS API 地址填入 `EASTMONEY_CHOICE_API_URL`，令牌填入 `EASTMONEY_CHOICE_TOKEN`。可参考 [Choice 数据服务](https://choice.eastmoney.com/product/datacenter) 与 [Choice 量化接口入口](https://quantapi.eastmoney.com/)。
+
+Choice 连续合约代码使用东财格式：沪金、沪银、沪铜、沪锡和上海原油分别为 `AU0.SHF`、`AG0.SHF`、`CU0.SHF`、`SN0.SHF`、`SC0.INE`；iFinD 仍使用上方独立的 `THS_CONTRACT_CODES` 映射。具体月份合约按 `AUYYMM.SHF`、`AGYYMM.SHF` 等格式填写，并以 Choice 代码校验结果为准。
 
 适配器会保留每个来源的合约、价格、时间戳和数据标签，并按来源中位价计算校准值：至少两个来源且价差不超过 0.5% 才显示“可用于研究校准”；否则显示“单源待核对/差异需复核”，不合成交易价。资讯按标题和原文链接去重，策略卡只输出“条件偏多/条件偏空/等待确认”、触发条件、失效条件和仓位边界；“证据置信度”不是胜率，也不构成投资建议。
 

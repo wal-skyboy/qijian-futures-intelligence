@@ -14,11 +14,11 @@ const EASTMONEY_DOCS_URL = 'https://quantapi.eastmoney.com/';
 const EASTMONEY_PUBLIC_URL = 'https://futures.eastmoney.com/';
 
 const CONTRACTS = [
-  { symbol: 'au', asset: '黄金', name: '沪金', contract: 'AU主连', ths: 'AU.SHF', aliases: ['au', 'au.shf', '沪金', '黄金', 'gold'] },
-  { symbol: 'ag', asset: '白银', name: '沪银', contract: 'AG主连', ths: 'AG.SHF', aliases: ['ag', 'ag.shf', '沪银', '白银', 'silver'] },
-  { symbol: 'cu', asset: '铜', name: '沪铜', contract: 'CU主连', ths: 'CU.SHF', aliases: ['cu', 'cu.shf', '沪铜', '铜', 'copper'] },
-  { symbol: 'sn', asset: '锡', name: '沪锡', contract: 'SN主连', ths: 'SN.SHF', aliases: ['sn', 'sn.shf', '沪锡', '锡', 'tin'] },
-  { symbol: 'sc', asset: '原油', name: '原油', contract: 'SC主连', ths: 'SC.INE', aliases: ['sc', 'sc.ine', '原油', '上海原油', 'crude', 'oil'] },
+  { symbol: 'au', asset: '黄金', name: '沪金', contract: 'AU主连', ths: 'AU.SHF', choice: 'AU0.SHF', aliases: ['au', 'au.shf', '沪金', '黄金', 'gold'] },
+  { symbol: 'ag', asset: '白银', name: '沪银', contract: 'AG主连', ths: 'AG.SHF', choice: 'AG0.SHF', aliases: ['ag', 'ag.shf', '沪银', '白银', 'silver'] },
+  { symbol: 'cu', asset: '铜', name: '沪铜', contract: 'CU主连', ths: 'CU.SHF', choice: 'CU0.SHF', aliases: ['cu', 'cu.shf', '沪铜', '铜', 'copper'] },
+  { symbol: 'sn', asset: '锡', name: '沪锡', contract: 'SN主连', ths: 'SN.SHF', choice: 'SN0.SHF', aliases: ['sn', 'sn.shf', '沪锡', '锡', 'tin'] },
+  { symbol: 'sc', asset: '原油', name: '原油', contract: 'SC主连', ths: 'SC.INE', choice: 'SC0.INE', aliases: ['sc', 'sc.ine', '原油', '上海原油', 'crude', 'oil'] },
 ];
 
 const SOURCE_INFO = {
@@ -154,16 +154,22 @@ function rowsFromPayload(payload) {
   return unique;
 }
 
+function defaultCodes(key) {
+  const field = key === 'EASTMONEY_CONTRACT_CODES' ? 'choice' : 'ths';
+  return Object.fromEntries(CONTRACTS.map((item) => [item.symbol, item[field] || item.ths]));
+}
+
 function configuredCodes(env, key = 'THS_CONTRACT_CODES') {
+  const defaults = defaultCodes(key);
   const raw = envValue(env, [key]);
-  if (!raw) return Object.fromEntries(CONTRACTS.map((item) => [item.symbol, item.ths]));
+  if (!raw) return defaults;
   try {
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object') return { ...Object.fromEntries(CONTRACTS.map((item) => [item.symbol, item.ths])), ...parsed };
+    if (parsed && typeof parsed === 'object') return { ...defaults, ...parsed };
   } catch {
     // Keep the documented defaults when an optional mapping is malformed.
   }
-  return Object.fromEntries(CONTRACTS.map((item) => [item.symbol, item.ths]));
+  return defaults;
 }
 
 function normaliseQuote(raw, sourceId, sourceName, sourceUrl, codeHint = '') {
