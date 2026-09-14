@@ -56,9 +56,31 @@ function parseDate(value) {
   // Calendar feeds often publish a date without a timezone. Treat it as a
   // Beijing calendar date so the displayed day does not shift at UTC midnight.
   const dateOnly = raw.match(/^(\d{4}-\d{2}-\d{2})$/);
-  const localWithoutTimezone = raw.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/);
-  const parsed = new Date(dateOnly ? `${dateOnly[1]}T00:00:00+08:00` : localWithoutTimezone ? `${raw}+08:00` : raw);
+  const localWithoutTimezone = raw.match(/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/);
+  const localValue = localWithoutTimezone ? raw.replace(' ', 'T') : raw;
+  const parsed = new Date(dateOnly ? `${dateOnly[1]}T00:00:00+08:00` : localWithoutTimezone ? `${localValue}+08:00` : raw);
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function calendarDateTime(dateValue, timeValue) {
+  const date = text(dateValue);
+  const time = text(timeValue);
+  if (!date || !time || /[T ]\d{1,2}:\d{2}/.test(date)) return date;
+  // Public calendars sometimes split a Beijing calendar date and a 12-hour
+  // release time into separate fields. Join them so events later today are
+  // not incorrectly classified as already past at midnight.
+  const match = time.match(/^(\d{1,2})(?::(\d{2}))?(?::(\d{2}))?\s*(am|pm)?$/i);
+  if (!match) return date;
+  let hour = Number(match[1]);
+  const minute = Number(match[2] || 0);
+  const second = Number(match[3] || 0);
+  const meridiem = text(match[4]).toLowerCase();
+  if (meridiem === 'pm' && hour < 12) hour += 12;
+  if (meridiem === 'am' && hour === 12) hour = 0;
+  if (hour > 23 || minute > 59 || second > 59) return date;
+  const isoDate = date.match(/^(\d{4}-\d{2}-\d{2})$/)?.[1];
+  if (!isoDate) return date;
+  return `${isoDate}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}+08:00`;
 }
 
 function shanghaiTime(date) {
@@ -179,17 +201,22 @@ function normaliseItem(raw, index, providerUrl) {
   if (!title && !summary) return null;
   const sourceUrl = sourceUrlFor(raw, providerUrl);
   const publishedRaw = firstText(raw, ['publishedAt', 'published_at', 'pubDate', 'timestamp', 'seendate', 'seenDate']);
-  const genericDate = firstText(raw, ['date']);
+  const genericDate = firstText(raw, ['date', 'Date']);
+  const calendarTime = firstText(raw, ['time', 'eventTime', 'event_time', 'releaseTime', 'release_time']);
   const scheduledRaw = firstText(raw, [
     'scheduledAt', 'scheduled_at', 'eventAt', 'event_at', 'eventDate', 'event_date',
     'releaseAt', 'release_at', 'startTime', 'start_time', 'scheduledDate', 'scheduled_date',
-  ]) || (!publishedRaw ? genericDate : '');
+  ]) || (!publishedRaw ? calendarDateTime(genericDate, calendarTime) : '');
   const published = parseDate(publishedRaw || scheduledRaw);
   const eventDate = scheduledRaw ? parseDate(scheduledRaw) : published;
   const scheduled = Boolean(scheduledRaw);
   const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(scheduledRaw);
+  // Keep an all-day item visible as a future window until the end of its
+  // calendar day. A midnight timestamp would otherwise become "past" as
+  // soon as the page is opened that morning.
+  const eventAtDate = dateOnly ? parseDate(`${scheduledRaw}T23:59:59`) : eventDate;
   const publishedAt = published.toISOString();
-  const eventAt = eventDate.toISOString();
+  const eventAt = eventAtDate.toISOString();
   const context = `${title} ${summary} ${text(raw.country || raw.currency || raw.region)}`;
   const asset = text(raw.asset) && ASSET_RULES.some((rule) => rule.asset === raw.asset) ? raw.asset : inferAsset(context);
   const side = classify(context, raw.side || raw.sentiment);
@@ -211,7 +238,7 @@ function normaliseItem(raw, index, providerUrl) {
     eventAt,
     scheduledAt: scheduled ? eventAt : null,
     scheduled,
-    time: dateOnly ? '' : text(raw.time) || shanghaiTime(eventDate),
+    time: dateOnly ? '' : calendarTime || shanghaiTime(eventDate),
     impact,
     confidence,
     tags: tags.length ? tags : ['全球事件', '待验证'],
@@ -466,7 +493,12 @@ export async function globalEvents(env = {}) {
       calendar_source_name: calendar.name,
       calendar_mode: calendar.mode,
       calendar_fetched_at: calendarData.fetchedAt || null,
+      // "configured" describes the selected source; "available" describes
+      // whether the last fetch succeeded. Keeping both prevents an empty or
+      // failed feed from being presented as a live calendar.
       calendar_configured: true,
+      calendar_available: !calendarError,
+      calendar_row_count: calendarRows.length,
       calendar_error: calendarError || undefined,
       history_error: historyError || undefined,
       history_window_days: 7,
@@ -484,6 +516,8 @@ export async function globalEvents(env = {}) {
         future_count: futureCount,
         calendar_item_count: scheduledItems.length,
         calendar_configured: true,
+        calendar_available: !calendarError,
+        calendar_row_count: calendarRows.length,
         calendar_mode: calendar.mode,
         calendar_source_name: calendar.name,
         calendar_fetched_at: calendarData.fetchedAt || undefined,
@@ -507,6 +541,8 @@ export async function globalEvents(env = {}) {
       calendar_mode: calendar.mode,
       calendar_fetched_at: calendarCached.key === calendar.url ? calendarCached.fetchedAt || null : null,
       calendar_configured: true,
+      calendar_available: false,
+      calendar_row_count: 0,
       calendar_error: cause instanceof Error ? cause.message : 'events provider error',
       history_window_days: 7,
       future_window_days: 7,
@@ -524,6 +560,8 @@ export async function globalEvents(env = {}) {
         future_count: 0,
         calendar_item_count: 0,
         calendar_configured: true,
+        calendar_available: false,
+        calendar_row_count: 0,
         calendar_mode: calendar.mode,
         calendar_source_name: calendar.name,
         calendar_next_refresh_at: new Date(Date.now() + DEFAULT_CALENDAR_TTL_MS).toISOString(),
