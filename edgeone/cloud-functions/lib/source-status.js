@@ -71,10 +71,10 @@ export function sourceReadiness(env = {}) {
     '需要 iFinD 官方账号令牌',
   );
   const choiceConfig = choiceToken && !choiceEndpoint
-    ? { status: 'needs_setup', status_label: '缺少官方 API 地址', message: 'Choice 需要同时配置合同提供的 HTTPS API 地址。' }
+    ? { status: 'needs_setup', status_label: '缺少官方 API 地址', message: 'Choice 需要同时配置合同提供的 HTTPS API 地址；开发版流量额度不代表期货实时快照权限。' }
     : configuredStatus(
       Boolean(choiceToken && choiceEndpoint),
-      '令牌和 API 地址已配置，正在按请求校验接口字段',
+      '令牌和 API 地址已配置，仍需校验实时权限',
       '需要 Choice 官方账号令牌与 API 地址',
     );
 

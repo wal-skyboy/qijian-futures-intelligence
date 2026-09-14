@@ -118,12 +118,18 @@ THS_CONTRACT_CODES={"au":"AU.SHF","ag":"AG.SHF","cu":"CU.SHF","sn":"SN.SHF","sc"
 THS_NEWS_FEED_URL=
 EASTMONEY_CHOICE_TOKEN=
 EASTMONEY_CHOICE_API_URL=
-EASTMONEY_CONTRACT_CODES=
+EASTMONEY_CONTRACT_CODES={"au":"AU0.SHF","ag":"AG0.SHF","cu":"CU0.SHF","sn":"SN0.SHF","sc":"SC0.INE"}
 EASTMONEY_NEWS_FEED_URL=
 CHINA_SOURCE_TIMEOUT_MS=8000
 ```
 
 `THS_IFIND_ACCESS_TOKEN` 使用同花顺 iFinD 官方账号生成的访问令牌；官方接口的实时行情地址、请求头和字段说明见 [iFinD API 手册](https://quantapi.51ifind.com/gwstatic/static/ds_web/quantapi-web/help-center/manual.html)，免费账户额度见 [iFinD 权限说明](https://quantapi.51ifind.com/gwstatic/static/ds_web/quantapi-web/help-center/permission.html)。东方财富的 Choice API 地址和权限由 Choice 产品提供，因此代码不会猜测或硬编码一个未公开的 REST 地址；将 Choice 控制台/合同中给出的 HTTPS API 地址填入 `EASTMONEY_CHOICE_API_URL`，令牌填入 `EASTMONEY_CHOICE_TOKEN`。可参考 [Choice 数据服务](https://choice.eastmoney.com/product/datacenter) 与 [Choice 量化接口入口](https://quantapi.eastmoney.com/)。
+
+Choice 连续合约代码使用东财格式：沪金、沪银、沪铜、沪锡和上海原油分别为 `AU0.SHF`、`AG0.SHF`、`CU0.SHF`、`SN0.SHF`、`SC0.INE`；iFinD 仍使用上方独立的 `THS_CONTRACT_CODES` 映射。具体月份合约按 `AUYYMM.SHF`、`AGYYMM.SHF` 等格式填写，并以 Choice 代码校验结果为准。
+
+本次本机 SDK 联调已确认：`c.start("ForceLogin=1,USEHTTP=1,HTTPTimeout=30")` 返回 `0 success`，`cec("AU0.SHF,AG0.SHF")` 也返回代码有效；但 `csqsnapshot("AU0.SHF", ...)` 返回 `10001012 insufficient user access`。因此当前阻塞点是 Choice 账号未开通期货实时快照（CSQ/CSQS）权限，而不是 Mac、HTTP、动态库或连续合约代码问题。站点适配器现在会识别 SDK/sidecar 返回的 `ErrorCode`/`ErrorMsg` 及 `10001012`，在“同花顺 × Choice”卡片中显示权限类型、错误码和下一步，不会把空结果误报成实时行情。
+
+Choice 适配器使用服务端 HTTPS sidecar 合同：平台向 `EASTMONEY_CHOICE_API_URL` 发送 `{ "codes": ["AU0.SHF", "AG0.SHF", "CU0.SHF", "SN0.SHF", "SC0.INE"], "fields": ["latest", "change_pct", "open", "high", "low", "volume", "open_interest", "bid", "ask"] }`，sidecar 可使用官方 Python SDK/C++/Java SDK 访问 Choice，并返回 `{ "items": [{"code":"AU0.SHF","latest":0,"change_pct":0,"as_of":"..."}] }`；若 SDK 返回 `{ "ErrorCode": 10001012, "ErrorMsg": "insufficient user access", "Data": {} }`，应原样保留错误码供平台诊断。令牌只放服务端环境变量或 sidecar 密钥存储，不放浏览器、Git 或聊天消息。
 
 适配器会保留每个来源的合约、价格、时间戳和数据标签，并按来源中位价计算校准值：至少两个来源且价差不超过 0.5% 才显示“可用于研究校准”；否则显示“单源待核对/差异需复核”，不合成交易价。资讯按标题和原文链接去重，策略卡只输出“条件偏多/条件偏空/等待确认”、触发条件、失效条件和仓位边界；“证据置信度”不是胜率，也不构成投资建议。
 

@@ -14,11 +14,11 @@ const EASTMONEY_DOCS_URL = 'https://quantapi.eastmoney.com/';
 const EASTMONEY_PUBLIC_URL = 'https://futures.eastmoney.com/';
 
 const CONTRACTS = [
-  { symbol: 'au', asset: '黄金', name: '沪金', contract: 'AU主连', ths: 'AU.SHF', aliases: ['au', 'au.shf', '沪金', '黄金', 'gold'] },
-  { symbol: 'ag', asset: '白银', name: '沪银', contract: 'AG主连', ths: 'AG.SHF', aliases: ['ag', 'ag.shf', '沪银', '白银', 'silver'] },
-  { symbol: 'cu', asset: '铜', name: '沪铜', contract: 'CU主连', ths: 'CU.SHF', aliases: ['cu', 'cu.shf', '沪铜', '铜', 'copper'] },
-  { symbol: 'sn', asset: '锡', name: '沪锡', contract: 'SN主连', ths: 'SN.SHF', aliases: ['sn', 'sn.shf', '沪锡', '锡', 'tin'] },
-  { symbol: 'sc', asset: '原油', name: '原油', contract: 'SC主连', ths: 'SC.INE', aliases: ['sc', 'sc.ine', '原油', '上海原油', 'crude', 'oil'] },
+  { symbol: 'au', asset: '黄金', name: '沪金', contract: 'AU主连', ths: 'AU.SHF', choice: 'AU0.SHF', aliases: ['au', 'au.shf', '沪金', '黄金', 'gold'] },
+  { symbol: 'ag', asset: '白银', name: '沪银', contract: 'AG主连', ths: 'AG.SHF', choice: 'AG0.SHF', aliases: ['ag', 'ag.shf', '沪银', '白银', 'silver'] },
+  { symbol: 'cu', asset: '铜', name: '沪铜', contract: 'CU主连', ths: 'CU.SHF', choice: 'CU0.SHF', aliases: ['cu', 'cu.shf', '沪铜', '铜', 'copper'] },
+  { symbol: 'sn', asset: '锡', name: '沪锡', contract: 'SN主连', ths: 'SN.SHF', choice: 'SN0.SHF', aliases: ['sn', 'sn.shf', '沪锡', '锡', 'tin'] },
+  { symbol: 'sc', asset: '原油', name: '原油', contract: 'SC主连', ths: 'SC.INE', choice: 'SC0.INE', aliases: ['sc', 'sc.ine', '原油', '上海原油', 'crude', 'oil'] },
 ];
 
 const SOURCE_INFO = {
@@ -48,6 +48,105 @@ function nowIso() {
 
 function text(value) {
   return value === undefined || value === null ? '' : String(value).trim();
+}
+
+/**
+ * Choice has two separate failure modes that used to look identical in the
+ * dashboard: a malformed request/code and a valid request made by an account
+ * without the CSQ/CSQS real-time entitlement.  Keep the provider response
+ * structured so the UI can tell the user what to fix without exposing a
+ * token or making an unverified claim about the account.
+ */
+function classifyChoiceFailure(code, message, httpStatus = null) {
+  const codeText = text(code);
+  const messageText = text(message);
+  const statusText = Number.isFinite(Number(httpStatus)) ? String(httpStatus) : '';
+  const combined = `${codeText} ${messageText} ${statusText}`.toLowerCase();
+  const displayCode = codeText || (statusText ? `HTTP ${statusText}` : null);
+
+  if (/401|unauthori[sz]ed|invalid token|token expired|令牌无效|令牌过期/.test(combined)) {
+    return {
+      error_code: displayCode || 'HTTP 401',
+      error_kind: 'authentication_error',
+      message: `Choice 令牌认证失败${displayCode ? `（${displayCode}）` : ''}。`,
+      next_step: '在 Choice 控制台重新生成有效令牌，并仅在服务端密钥环境中更新后重试。',
+    };
+  }
+  if (/10001012|10000012|insufficient[\s_-]*user[\s_-]*access|no access|not authorized|forbidden|权限不足|未开通|无权|未授权|没有权限/.test(combined)) {
+    return {
+      error_code: displayCode || '10001012',
+      error_kind: 'insufficient_user_access',
+      message: `Choice 期货实时快照权限不足${displayCode ? `（${displayCode}）` : ''}；登录链路正常，但当前账号未获 CSQ/CSQS 实时行情授权。`,
+      next_step: '在 Choice 账户申请/开通期货实时行情权限，并确认 AU0.SHF、AG0.SHF 等合约包含在授权范围内。',
+    };
+  }
+  if (/10003008|invalid[\s_-]*(stock|security|instrument)[\s_-]*code|invalid code|代码无效|证券代码无效/.test(combined)) {
+    return {
+      error_code: displayCode || '10003008',
+      error_kind: 'invalid_request',
+      message: `Choice 合约代码或请求字段无效${displayCode ? `（${displayCode}）` : ''}。`,
+      next_step: '用 Choice 代码校验确认连续合约（如 AU0.SHF、AG0.SHF），并核对接口字段名称。',
+    };
+  }
+  if (/429|rate[\s_-]*limit|too many requests|频率|流量超限/.test(combined)) {
+    return {
+      error_code: displayCode || '429',
+      error_kind: 'rate_limited',
+      message: `Choice 请求频率或流量受限${displayCode ? `（${displayCode}）` : ''}。`,
+      next_step: '降低轮询频率、检查试用额度，并按 Choice 配额要求安排服务端缓存。',
+    };
+  }
+  if (/timeout|timed out|aborted|超时/.test(combined)) {
+    return {
+      error_code: displayCode,
+      error_kind: 'timeout',
+      message: `Choice 请求超时${displayCode ? `（${displayCode}）` : ''}。`,
+      next_step: '检查官方 API 地址、网络连通性和服务状态；保留明确的待核验状态。',
+    };
+  }
+  return {
+    error_code: displayCode,
+    error_kind: 'provider_error',
+    message: `Choice 返回错误${displayCode ? `（${displayCode}）` : ''}${messageText ? `：${messageText}` : '。'}`,
+    next_step: '核对 Choice 官方 API 地址、令牌、请求字段和账号服务状态。',
+  };
+}
+
+function choiceFailureFromPayload(payload, httpStatus = null, depth = 0) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const code = payload.ErrorCode ?? payload.errorCode ?? payload.error_code ?? payload.errorcode ?? payload.errcode ?? payload.code;
+  const errorValue = payload.error;
+  const message = payload.ErrorMsg ?? payload.errorMsg ?? payload.errmsg ?? payload.message ?? payload.error_message ?? (typeof errorValue === 'string' ? errorValue : '');
+  const hasErrorField = [errorValue, payload.ErrorMsg, payload.errorMsg, payload.errmsg, payload.error_message, payload.message, payload.msg].some((value) => value !== undefined && value !== null && text(value) !== '');
+  const codeText = text(code).toLowerCase();
+  const codeLooksLikeError = /^-?\d+$/.test(codeText) || /^(err|error|e[_-])/i.test(codeText) || /permission|forbidden|denied/i.test(codeText);
+  const nonSuccessCode = codeLooksLikeError && !['0', '200', 'ok', 'success'].includes(codeText);
+  const failedHttp = Number.isFinite(Number(httpStatus)) && Number(httpStatus) >= 400;
+  const successMessage = !message || /^(ok|success|succeeded|successful|成功)$/i.test(text(message));
+  if (depth < 3) {
+    for (const key of ['Data', 'data', 'result', 'resultData', 'response']) {
+      const nested = payload[key];
+      const failure = nested && typeof nested === 'object' && !Array.isArray(nested) ? choiceFailureFromPayload(nested, null, depth + 1) : null;
+      if (failure) return failure;
+    }
+  }
+  if (!failedHttp && !errorValue && (!codeText || !nonSuccessCode) && successMessage) return null;
+  if (hasErrorField || nonSuccessCode || failedHttp) return classifyChoiceFailure(code, message, httpStatus);
+  return null;
+}
+
+class ChoiceProviderError extends Error {
+  constructor(details) {
+    super(details.message);
+    this.name = 'ChoiceProviderError';
+    this.details = details;
+  }
+}
+
+function choiceFailureFromCause(cause) {
+  if (cause instanceof ChoiceProviderError) return cause.details;
+  const message = cause instanceof Error ? cause.message : text(cause) || 'Choice 请求失败';
+  return classifyChoiceFailure(null, message);
 }
 
 function number(value) {
@@ -154,16 +253,22 @@ function rowsFromPayload(payload) {
   return unique;
 }
 
+function defaultCodes(key) {
+  const field = key === 'EASTMONEY_CONTRACT_CODES' ? 'choice' : 'ths';
+  return Object.fromEntries(CONTRACTS.map((item) => [item.symbol, item[field] || item.ths]));
+}
+
 function configuredCodes(env, key = 'THS_CONTRACT_CODES') {
+  const defaults = defaultCodes(key);
   const raw = envValue(env, [key]);
-  if (!raw) return Object.fromEntries(CONTRACTS.map((item) => [item.symbol, item.ths]));
+  if (!raw) return defaults;
   try {
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object') return { ...Object.fromEntries(CONTRACTS.map((item) => [item.symbol, item.ths])), ...parsed };
+    if (parsed && typeof parsed === 'object') return { ...defaults, ...parsed };
   } catch {
     // Keep the documented defaults when an optional mapping is malformed.
   }
-  return Object.fromEntries(CONTRACTS.map((item) => [item.symbol, item.ths]));
+  return defaults;
 }
 
 function normaliseQuote(raw, sourceId, sourceName, sourceUrl, codeHint = '') {
@@ -250,17 +355,24 @@ async function fetchChoiceMarket(env) {
   if (!token || !endpoint) return { source: sourceStatus(info, 'not_configured', !token ? '未配置 EASTMONEY_CHOICE_TOKEN' : '未配置 EASTMONEY_CHOICE_API_URL'), items: [], news: [] };
   if (!/^https:\/\//i.test(endpoint)) return { source: sourceStatus(info, 'provider_error', 'Choice API 地址必须使用 HTTPS'), items: [], news: [] };
   const codes = configuredCodes(env, 'EASTMONEY_CONTRACT_CODES');
-  const body = { codes: CONTRACTS.map((item) => codes[item.symbol] || item.ths), fields: ['latest', 'change_pct', 'open', 'high', 'low', 'volume', 'open_interest', 'bid', 'ask'] };
+  const body = { codes: CONTRACTS.map((item) => codes[item.symbol] || item.choice || item.ths), fields: ['latest', 'change_pct', 'open', 'high', 'low', 'volume', 'open_interest', 'bid', 'ask'] };
   try {
     const response = await fetchWithTimeout(endpoint, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, access_token: token }, body: JSON.stringify(body) }, providerTimeout(env));
-    if (!response.ok) throw new Error(`Choice ${response.status}`);
-    const payload = await response.json();
-    if (payload?.error || payload?.errcode || payload?.error_code) throw new Error(text(payload.error || payload.errmsg || payload.message || 'Choice 返回错误'));
+    const rawBody = await response.text();
+    let payload = null;
+    try { payload = rawBody ? JSON.parse(rawBody) : null; } catch { payload = rawBody; }
+    const payloadFailure = choiceFailureFromPayload(payload, response.status);
+    if (payloadFailure) throw new ChoiceProviderError(payloadFailure);
+    if (!response.ok) throw new ChoiceProviderError(classifyChoiceFailure(null, `HTTP ${response.status}`, response.status));
+    if (typeof payload === 'string' && payload.trim() && /error|fail|permission|access|权限|授权/i.test(payload)) {
+      throw new ChoiceProviderError(classifyChoiceFailure(null, payload));
+    }
     const rows = rowsFromPayload(payload);
     const items = rows.map((row) => normaliseQuote(row, info.id, info.name, info.docs_url)).filter(Boolean);
     return { source: sourceStatus(info, items.length ? 'ok' : 'empty', items.length ? '已返回授权实时字段' : '接口返回字段不完整', { market_count: items.length, updated_at: nowIso() }), items, news: [] };
   } catch (cause) {
-    return { source: sourceStatus(info, 'provider_error', cause instanceof Error ? cause.message : 'Choice 请求失败'), items: [], news: [] };
+    const failure = choiceFailureFromCause(cause);
+    return { source: sourceStatus(info, 'provider_error', failure.message, { error_code: failure.error_code, error_kind: failure.error_kind, next_step: failure.next_step, updated_at: nowIso() }), items: [], news: [] };
   }
 }
 
@@ -432,7 +544,7 @@ export async function chinaSources(env = {}) {
       return groups;
     }
     const statuses = [previous.status, card.status];
-    const status = statuses.includes('ok') ? 'ok' : statuses.includes('empty') ? 'empty' : statuses.includes('not_configured') ? 'not_configured' : 'provider_error';
+    const status = statuses.includes('ok') ? 'ok' : statuses.includes('provider_error') ? 'provider_error' : statuses.includes('empty') ? 'empty' : 'not_configured';
     const messages = [previous.message, card.message].filter(Boolean);
     groups[card.id] = {
       ...previous,
@@ -441,6 +553,9 @@ export async function chinaSources(env = {}) {
       market_count: (previous.market_count || 0) + (card.market_count || 0),
       news_count: (previous.news_count || 0) + (card.news_count || 0),
       updated_at: card.updated_at || previous.updated_at,
+      error_code: previous.error_code || card.error_code,
+      error_kind: previous.error_kind || card.error_kind,
+      next_step: previous.next_step || card.next_step,
     };
     return groups;
   }, {}));
@@ -449,9 +564,9 @@ export async function chinaSources(env = {}) {
   const news = dedupeNews([...(thsNews.news || []), ...(choiceNews.news || [])]);
   const calibration = buildCalibration(baselineItems, sourceItems);
   const strategies = buildStrategies(calibration, news);
-  const configuredSourceCount = dedupedCards.filter((card) => ['ok', 'empty'].includes(card.status) && ['同花顺 iFinD', '东方财富 Choice'].includes(card.name)).length;
+  const configuredSourceCount = dedupedCards.filter((card) => card.status !== 'not_configured' && ['同花顺 iFinD', '东方财富 Choice'].includes(card.name)).length;
   const hasAnyData = sourceItems.length > 0 || baselineItems.some((item) => item.available);
-  const status = sourceItems.length && configuredSourceCount >= 1 ? 'ok' : hasAnyData ? 'partial' : 'not_configured';
+  const status = sourceItems.length && configuredSourceCount >= 1 ? 'ok' : hasAnyData || configuredSourceCount >= 1 ? 'partial' : 'not_configured';
   const syncedAt = nowIso();
   const payload = {
     status, as_of: syncedAt, items: sourceItems, calibration, strategies, news,
@@ -470,4 +585,4 @@ export async function chinaSources(env = {}) {
   return payload;
 }
 
-export { CONTRACTS, SOURCE_INFO, THS_API_URL, THS_DOCS_URL, EASTMONEY_DOCS_URL };
+export { CONTRACTS, SOURCE_INFO, THS_API_URL, THS_DOCS_URL, EASTMONEY_DOCS_URL, classifyChoiceFailure, choiceFailureFromPayload };

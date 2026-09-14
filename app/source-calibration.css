@@ -6,6 +6,7 @@
 .china-source-card>div{display:flex;align-items:center;gap:8px;min-width:0}
 .china-source-card>div:first-child b{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .china-source-card small{display:block;min-height:28px;margin:7px 0;color:var(--muted);font-size:8px;line-height:1.6}
+.china-source-card small.source-next-step{min-height:0;margin-top:-2px;color:var(--amber)}
 .china-source-card>div:last-child{justify-content:space-between;font-size:8px;color:var(--muted)}
 .china-source-card a{color:var(--amber);text-decoration:none;white-space:nowrap}
 .china-source-status{display:inline-flex;align-items:center;gap:4px;font-size:8px;white-space:nowrap}
