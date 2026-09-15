@@ -5,6 +5,15 @@ const DEFAULT_QUERY = '(gold OR bullion OR XAU OR silver OR XAG OR copper OR tin
 const DEFAULT_RSS_URL = 'https://news.google.com/rss/search';
 const DEFAULT_RSS_QUERY = 'gold OR silver OR copper OR tin OR "crude oil" OR dollar when:7d';
 const DEFAULT_EVENTS_TIMEOUT_MS = 1400;
+// Public, no-key RSS fallbacks.  GDELT and Google News can be slow or blocked
+// from a serverless egress IP; these official feeds keep the past-7-day radar
+// useful without pretending that a failed provider returned live news.
+const PUBLIC_HISTORY_FEEDS = [
+  { id: 'cnbc_business', name: 'CNBC Business', url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html' },
+  { id: 'federal_reserve', name: 'Federal Reserve', url: 'https://www.federalreserve.gov/feeds/press_all.xml' },
+  { id: 'eia_today_in_energy', name: 'U.S. EIA Today in Energy', url: 'https://www.eia.gov/rss/todayinenergy.xml' },
+];
+const MARKET_RELEVANCE = /gold|bullion|silver|xag|copper|cuprum|tin|crude|wti|brent|oil|dollar|dxy|usd|fed|fomc|rate|yield|inflation|employment|payroll|pmi|opec|eia|treasury|central bank|黄金|白银|铜|锡|原油|美元|利率|收益率|通胀|就业|非农|央行|库存|供应|需求/i;
 // This is a public economic-calendar feed, not an exchange-authorized quote feed.
 // GLOBAL_CALENDAR_URL can replace it with an official/licensed calendar when available.
 const DEFAULT_CALENDAR_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
@@ -325,6 +334,11 @@ function rssRows(xml) {
   });
 }
 
+function relevantHistoryRow(raw) {
+  const value = text(raw?.title || raw?.headline || raw?.name || raw?.description || raw?.summary || raw?.snippet);
+  return MARKET_RELEVANCE.test(value);
+}
+
 function atomRows(xml) {
   return [...String(xml || '').matchAll(/<entry\b[^>]*>([\s\S]*?)<\/entry>/gi)].map((match) => {
     const block = match[1];
@@ -433,18 +447,18 @@ export async function globalEvents(env = {}) {
     const requestedTimeout = Number(env?.EVENTS_FETCH_TIMEOUT_MS) || DEFAULT_EVENTS_TIMEOUT_MS;
     const timeoutMs = Math.min(Math.max(requestedTimeout, 500), 2500);
     const sourceUrl = providerUrl;
-    const providerName = configured ? `configured_events+${calendar.mode}_calendar` : `gdelt+google_news+${calendar.mode}_calendar`;
+    const providerName = configured ? `configured_events+${calendar.mode}_calendar` : `gdelt+google_news+public_rss+${calendar.mode}_calendar`;
     const historyResult = (async () => {
       try {
         if (configured) {
           const rows = await feedRows(providerUrl, timeoutMs);
-          return { rows, error: rows.length ? '' : 'history feed empty' };
+          return { rows, error: rows.length ? '' : 'history feed empty', sources: [{ id: 'configured', name: '已配置资讯源', status: rows.length ? 'ok' : 'empty', count: rows.length }] };
         }
         const gdeltUrl = `${providerUrl}?${new URLSearchParams({
           query: DEFAULT_QUERY, mode: 'artlist', format: 'json', maxrecords: '80', sort: 'datedesc', timespan: '7d',
         }).toString()}`;
         const rssUrl = `${DEFAULT_RSS_URL}?${new URLSearchParams({ q: DEFAULT_RSS_QUERY, hl: 'en-US', gl: 'US', ceid: 'US:en' }).toString()}`;
-        const [gdeltResult, rssResult] = await Promise.allSettled([
+        const [gdeltResult, rssResult, ...fallbackResults] = await Promise.allSettled([
           fetchWithTimeout(gdeltUrl, timeoutMs).then(async (response) => ({
             ok: response.ok,
             status: response.status,
@@ -455,16 +469,37 @@ export async function globalEvents(env = {}) {
             status: response.status,
             rows: response.ok ? rssRows(await response.text()) : [],
           })),
+          ...PUBLIC_HISTORY_FEEDS.map((feed) => feedRows(feed.url, timeoutMs).then((rows) => ({ ok: true, status: 200, rows, feed }))),
         ]);
         const gdelt = gdeltResult.status === 'fulfilled' ? gdeltResult.value : null;
         const rss = rssResult.status === 'fulfilled' ? rssResult.value : null;
-        const rows = [...(gdelt?.rows || []), ...(rss?.rows || [])];
-        if (rows.length) return { rows, error: '' };
+        const fallback = fallbackResults.map((result, index) => {
+          const feed = PUBLIC_HISTORY_FEEDS[index];
+          if (result.status !== 'fulfilled') return { feed, rows: [], status: 'timeout', error: result.reason instanceof Error ? result.reason.message : 'provider error' };
+          const value = result.value;
+          const rows = (value.rows || []).filter(relevantHistoryRow);
+          return { feed, rows, status: value.ok ? (rows.length ? 'ok' : 'empty') : `HTTP ${value.status}`, error: value.ok ? (rows.length ? '' : 'empty feed') : `HTTP ${value.status}` };
+        });
+        const rows = [
+          ...(gdelt?.rows || []),
+          ...(rss?.rows || []),
+          ...fallback.flatMap((item) => item.rows),
+        ];
+        const sourceStatuses = [
+          { id: 'gdelt', name: 'GDELT', status: gdelt?.ok ? 'ok' : gdelt?.status ? `HTTP ${gdelt.status}` : 'timeout', count: gdelt?.rows?.length || 0 },
+          { id: 'google_news', name: 'Google News RSS', status: rss?.ok ? 'ok' : rss?.status ? `HTTP ${rss.status}` : 'timeout', count: rss?.rows?.length || 0 },
+          ...fallback.map((item) => ({ id: item.feed.id, name: item.feed.name, status: item.status, count: item.rows.length })),
+        ];
+        const failedSources = sourceStatuses.filter((item) => item.status !== 'ok');
+        if (rows.length) {
+          const error = failedSources.length ? `部分公开资讯源不可用（${failedSources.map((item) => `${item.name} ${item.status}`).join('；')}）；已使用可用公开 RSS 备援` : '';
+          return { rows, error, sources: sourceStatuses };
+        }
         const gdeltStatus = gdelt?.status ? `gdelt ${gdelt.status}` : 'gdelt timeout';
         const rssStatus = rss?.status ? `rss ${rss.status}` : 'rss timeout';
-        return { rows: [], error: `events providers unavailable (${gdeltStatus}; ${rssStatus})` };
+        return { rows: [], error: `events providers unavailable (${gdeltStatus}; ${rssStatus}; public RSS fallbacks empty)`, sources: sourceStatuses };
       } catch (cause) {
-        return { rows: [], error: cause instanceof Error ? cause.message : 'events provider error' };
+        return { rows: [], error: cause instanceof Error ? cause.message : 'events provider error', sources: [] };
       }
     })();
     const calendarResult = calendarRowsCached(calendar, Math.min(Math.max(Number(env?.CALENDAR_FETCH_TIMEOUT_MS) || 3500, 700), 6000), forceRefresh);
@@ -501,6 +536,7 @@ export async function globalEvents(env = {}) {
       calendar_row_count: calendarRows.length,
       calendar_error: calendarError || undefined,
       history_error: historyError || undefined,
+      history_sources: history.sources || [],
       history_window_days: 7,
       future_window_days: 7,
       items,
@@ -524,6 +560,7 @@ export async function globalEvents(env = {}) {
         calendar_next_refresh_at: calendarNextRefreshAt,
         calendar_error: calendarError || undefined,
         history_error: historyError || undefined,
+        history_sources: history.sources || [],
         stale: false,
         next_refresh_at: new Date(Date.now() + CACHE_TTL_MS).toISOString(),
       },
@@ -533,7 +570,7 @@ export async function globalEvents(env = {}) {
   } catch (cause) {
     return {
       status: 'provider_error',
-      provider: configured ? `configured_events+${calendar.mode}_calendar` : `gdelt+google_news+${calendar.mode}_calendar`,
+      provider: configured ? `configured_events+${calendar.mode}_calendar` : `gdelt+google_news+public_rss+${calendar.mode}_calendar`,
       fetched_at: fetchedAt,
       source_url: providerUrl,
       calendar_source_url: calendar.url,
@@ -544,6 +581,7 @@ export async function globalEvents(env = {}) {
       calendar_available: false,
       calendar_row_count: 0,
       calendar_error: cause instanceof Error ? cause.message : 'events provider error',
+      history_sources: [],
       history_window_days: 7,
       future_window_days: 7,
       items: [],

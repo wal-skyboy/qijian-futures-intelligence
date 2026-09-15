@@ -404,6 +404,8 @@ export async function marketBoard(env = {}) {
     comexGoldSnapshot(env),
   ]);
   const calibration = items.map(calibrationFor);
+  const calibratedCount = calibration.filter((item) => ['provider_aligned', 'reference_only'].includes(item.status)).length;
+  const boardStatus = calibratedCount === items.length ? 'ok' : calibratedCount ? 'partial' : 'waiting';
   const syncedAt = nowIso();
   boardCache = {
     items,
@@ -411,13 +413,13 @@ export async function marketBoard(env = {}) {
     calibration,
     as_of: syncedAt,
     sync: {
-      status: 'ok',
+      status: boardStatus,
       synced_at: syncedAt,
       latency_ms: Math.max(0, Date.now() - started),
       refresh_mode: 'polling',
       cache_ttl_seconds: BOARD_TTL_MS / 1000,
       live_count: items.filter((item) => LIVE_MODES.has(item.data_mode)).length,
-      calibrated_count: calibration.filter((item) => ['provider_aligned', 'reference_only'].includes(item.status)).length,
+      calibrated_count: calibratedCount,
       item_count: items.length,
     },
     coverage: [
