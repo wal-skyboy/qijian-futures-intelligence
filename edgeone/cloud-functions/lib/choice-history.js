@@ -74,25 +74,26 @@ export function choiceHistoryStatus(env = {}) {
   const endpointValid = !endpoint || isHttps(endpoint);
   const configured = Boolean(token && endpoint && endpointValid);
   const realtime = choiceRealtimeEnabled(env);
+  const researchStatus = configured ? 'needs_mapping' : 'needs_setup';
   const capabilities = [
     capability('history_daily', '历史日线行情', configured ? 'configured' : 'needs_setup', '用于回测、校准与趋势分析', '日线'),
     capability('history_weekly', '历史周线行情', configured ? 'configured' : 'needs_setup', '用于中周期趋势与风险评估', '周线'),
     capability('history_monthly', '历史月线行情', configured ? 'configured' : 'needs_setup', '用于长期结构分析', '月线'),
     capability('history_yearly', '历史年线行情', configured ? 'configured' : 'needs_setup', '用于长期回溯', '年线'),
-    capability('valuation', '估值数据', configured ? 'configured' : 'needs_setup', '用于估值与跨品种比较'),
-    capability('financial', '财务数据', configured ? 'configured' : 'needs_setup', '用于基本面研究'),
-    capability('industry', '行业数据', configured ? 'configured' : 'needs_setup', '用于产业链与行业景气分析'),
-    capability('margin', '融资融券', configured ? 'configured' : 'needs_setup', '用于资金与拥挤度研究'),
+    capability('valuation', '估值数据', researchStatus, '已授权待按 Choice 函数映射'),
+    capability('financial', '财务数据', researchStatus, '已授权待按 Choice 函数映射'),
+    capability('industry', '行业数据', researchStatus, '已授权待按 Choice 函数映射'),
+    capability('margin', '融资融券', researchStatus, '已授权待按 Choice 函数映射'),
     capability('realtime', '实时行情', realtime ? 'configured' : 'needs_authorization', realtime ? '已显式启用，仍需实测' : '需交易所/行情授权'),
     capability('minute', '分钟行情', realtime ? 'configured' : 'needs_authorization', realtime ? '已显式启用，仍需实测' : '需交易所/行情授权'),
   ];
   let status = configured ? 'configured' : 'needs_setup';
-  let statusLabel = configured ? '历史/研究已配置' : '历史/研究待配置';
+  let statusLabel = configured ? '历史已配置 · 研究字段待映射' : '历史/研究待配置';
   let message = configured
-    ? 'Choice 历史/研究 sidecar 已配置；日/周/月/年序列可进入回测与校准。实时/分钟仍单独按授权状态处理。'
+    ? 'Choice 历史 sidecar 已配置；日/周/月/年序列可进入回测与校准。估值、财务、行业、两融需按已授权函数逐项映射后再读取；实时/分钟仍单独按授权状态处理。'
     : 'Choice 历史/研究通道需要官方账号令牌和你可控的 HTTPS sidecar 地址；本平台不会猜测 Choice 私有 HTTP 地址。';
   let nextStep = configured
-    ? '在本人私有版登录后点击“测试 AU0.SHF 日线”；确认返回行数、日期和收盘价后再接入回测。'
+    ? '先在本人私有版登录后点击“测试 AU0.SHF 日线”；确认历史数据后，再按 Choice 手册把估值、财务、行业、两融函数加入 sidecar。'
     : '在受信主机部署官方 Choice SDK sidecar，使用 c.csd 拉取历史序列，再配置 EASTMONEY_CHOICE_HISTORY_API_URL 与服务端令牌。';
   if (!endpointValid) {
     status = 'error';
@@ -154,7 +155,7 @@ function stringList(value) {
   return raw ? raw.split(/[,;，；]/).map((item) => item.trim()).filter(Boolean) : [];
 }
 
-function valueAt(matrix, indicatorIndex, dateIndex) {
+function valueAt(matrix, indicatorIndex, dateIndex, indicator = '') {
   if (Array.isArray(matrix)) {
     const indicatorRow = matrix[indicatorIndex];
     if (Array.isArray(indicatorRow)) return indicatorRow[dateIndex] ?? null;
@@ -163,10 +164,12 @@ function valueAt(matrix, indicatorIndex, dateIndex) {
     return indicatorIndex === 0 && dateIndex < matrix.length ? matrix[dateIndex] : null;
   }
   if (matrix && typeof matrix === 'object') {
+    const keyedIndicator = Object.entries(matrix).find(([key]) => normalizeIndicator(key) === indicator);
+    if (keyedIndicator) return valueAt(keyedIndicator[1], 0, dateIndex, indicator);
     const row = matrix[String(indicatorIndex)] ?? matrix[indicatorIndex];
-    if (row !== undefined) return valueAt(row, 0, dateIndex);
+    if (row !== undefined) return valueAt(row, 0, dateIndex, indicator);
     const dateRow = matrix[String(dateIndex)] ?? matrix[dateIndex];
-    if (dateRow !== undefined) return valueAt(dateRow, indicatorIndex, 0);
+    if (dateRow !== undefined) return valueAt(dateRow, indicatorIndex, 0, indicator);
   }
   return null;
 }
@@ -223,7 +226,7 @@ export function extractChoiceHistoryRows(payload) {
     dates.forEach((date, dateIndex) => {
       const row = { code, date };
       indicators.forEach((indicator, indicatorIndex) => {
-        const value = number(valueAt(matrix, indicatorIndex, dateIndex));
+        const value = number(valueAt(matrix, indicatorIndex, dateIndex, indicator));
         if (value === null) return;
         if (['open', 'high', 'low', 'close', 'volume'].includes(indicator)) row[indicator] = value;
       });

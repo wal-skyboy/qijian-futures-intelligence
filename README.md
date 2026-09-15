@@ -141,7 +141,7 @@ Choice 连续合约代码使用东财格式：沪金、沪银、沪铜、沪锡�
 
 本次本机 SDK 联调已确认：`c.start("ForceLogin=1,USEHTTP=1,HTTPTimeout=30")` 返回 `0 success`，`cec("AU0.SHF,AG0.SHF")` 也返回代码有效；但 `csqsnapshot("AU0.SHF", ...)` 返回 `10001012 insufficient user access`。因此当前阻塞点是 Choice 账号未开通期货实时快照（CSQ/CSQS）权限，而不是 Mac、HTTP、动态库或连续合约代码问题。站点适配器现在会识别 SDK/sidecar 返回的 `ErrorCode`/`ErrorMsg` 及 `10001012`，在“同花顺 × Choice”卡片中显示权限类型、错误码和下一步，不会把空结果误报成实时行情。
 
-Choice 适配器现在明确拆成两条通道。历史/研究通道使用官方 `c.csd` 序列函数，`Period=1/2/3/4` 分别对应日、周、月、年，可用于回测、估值、财务、行业和融资融券研究；实时/分钟通道使用 CSQ/CSQS，未获交易所或行情产品授权时默认完全不调用。官方函数、参数和 SDK 下载入口见 [Choice 产品手册](https://quantapi.eastmoney.com/Manual?from=web)、[Choice Python SDK 手册](https://quantapi.eastmoney.com/Upload/EMQuantAPI_Python.pdf?_=639058106254967798) 和 [Choice 下载中心](https://quantapi.eastmoney.com/Download?from=web)。
+Choice 适配器现在明确拆成两条通道。历史通道先使用官方 `c.csd` 序列函数，`Period=1/2/3/4` 分别对应日、周、月、年，已经可以作为回测和 K 线校准输入；估值、财务、行业和融资融券虽可在 Choice 账号中授权，但还需要在 sidecar 中按你的产品权限逐项映射官方函数与字段，页面会标为“待函数映射”，不会把它们误报成已返回。实时/分钟通道使用 CSQ/CSQS，未获交易所或行情产品授权时默认完全不调用。官方函数、参数和 SDK 下载入口见 [Choice 产品手册](https://quantapi.eastmoney.com/Manual?from=web)、[Choice Python SDK 手册](https://quantapi.eastmoney.com/Upload/EMQuantAPI_Python.pdf?_=639058106254967798) 和 [Choice 下载中心](https://quantapi.eastmoney.com/Download?from=web)。
 
 历史通道通过本人可控的 HTTPS sidecar 接入，平台不会猜测 Choice 未公开的 HTTP 地址，也不会把授权历史行输出给公开访客。sidecar 收到如下请求后，用官方 SDK 调 `c.csd(codes, indicators, startdate, enddate, "Period=1,Order=1,AdjustFlag=1,Market=CNFESF,Ispandas=0")`，再返回归一化 JSON：
 
