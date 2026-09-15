@@ -7,6 +7,8 @@
  * expired entitlement still fails closed with an explicit data label.
  */
 
+import { choiceHistoryStatus, choiceRealtimeEnabled } from './choice-history.js';
+
 const SHFE_DELAYED_URL = 'https://www.shfe.com.cn/data/tradedata/future/delaymarket/delaymarket_all.dat';
 
 const EXCHANGE_LINKS = [
@@ -56,6 +58,7 @@ export function sourceReadiness(env = {}) {
   const thsEndpoint = envValue(env, ['THS_IFIND_API_URL']);
   const choiceToken = envValue(env, ['EASTMONEY_CHOICE_TOKEN', 'CHOICE_ACCESS_TOKEN']);
   const choiceEndpoint = envValue(env, ['EASTMONEY_CHOICE_API_URL']);
+  const choiceHistory = choiceHistoryStatus(env);
 
   const simnowConfig = configuredStatus(
     bridgeConfigured,
@@ -85,7 +88,12 @@ export function sourceReadiness(env = {}) {
     : thsConfig;
   const choiceStatus = choiceConfig.status === 'configured' && choiceEndpoint && !isHttps(choiceEndpoint)
     ? { status: 'error', status_label: '接口地址必须为 HTTPS', message: '请改用 Choice 合同提供的 HTTPS API 地址。' }
-    : choiceConfig;
+    : choiceConfig.status !== 'configured'
+      ? choiceConfig
+    : choiceRealtimeEnabled(env)
+      ? choiceConfig
+      : { status: 'needs_authorization', status_label: '实时/分钟需交易所授权', message: 'Choice 历史/研究数据可单独接入；当前账号的实时/分钟行情未授权，平台不会调用 CSQ/CSQS。' };
+  const choiceAnyConfigured = choiceHistory.status === 'configured' || choiceStatus.status === 'configured';
 
   const steps = [
     {
@@ -107,22 +115,23 @@ export function sourceReadiness(env = {}) {
     },
     {
       id: 'authorised_apis', order: 3, name: 'iFinD × Choice 授权 API', category: '试用/授权',
-      status: thsStatus.status === 'configured' && choiceStatus.status === 'configured'
+      status: thsStatus.status === 'configured' && choiceAnyConfigured
         ? 'configured'
-        : thsStatus.status === 'configured' || choiceStatus.status === 'configured'
+        : thsStatus.status === 'configured' || choiceAnyConfigured
           ? 'partial'
           : thsStatus.status === 'error' || choiceStatus.status === 'error'
             ? 'error'
             : 'needs_setup',
-      status_label: thsStatus.status === 'configured' && choiceStatus.status === 'configured' ? '双源已配置' : thsStatus.status === 'configured' || choiceStatus.status === 'configured' ? '已配置一源' : '等待授权',
-      message: `同花顺：${thsStatus.status_label}；东方财富：${choiceStatus.status_label}。`,
-      next_step: '在服务端填入对应令牌和官方 HTTPS API 地址，刷新“同花顺 × Choice”区块',
+      status_label: thsStatus.status === 'configured' && choiceAnyConfigured ? '双源/历史已配置' : thsStatus.status === 'configured' || choiceAnyConfigured ? '已配置一源' : '等待授权',
+      message: `同花顺：${thsStatus.status_label}；东方财富历史：${choiceHistory.status_label}；东方财富实时：${choiceStatus.status_label}。`,
+      next_step: choiceHistory.status === 'configured' ? '先在本人私有版测试 AU0.SHF 日线；实时/分钟需取得交易所或行情授权后再启用。' : '在受信主机部署 Choice SDK sidecar，配置历史令牌与 HTTPS API 地址后刷新页面',
       docs_url: 'https://quantapi.10jqka.com.cn/gwstatic/static/ds_web/quantapi-web/help-center/manual.html',
       public_url: 'https://choice.eastmoney.com/product/datacenter',
-      safe_configured: thsStatus.status === 'configured' || choiceStatus.status === 'configured',
+      safe_configured: thsStatus.status === 'configured' || choiceAnyConfigured,
       providers: [
         { id: 'ths_ifind', name: '同花顺 iFinD', status: thsStatus.status, status_label: thsStatus.status_label, docs_url: 'https://quantapi.10jqka.com.cn/gwstatic/static/ds_web/quantapi-web/help-center/manual.html' },
-        { id: 'eastmoney_choice', name: '东方财富 Choice', status: choiceStatus.status, status_label: choiceStatus.status_label, docs_url: 'https://quantapi.eastmoney.com/' },
+        { id: 'eastmoney_choice_history', name: '东方财富 Choice（历史/研究）', status: choiceHistory.status, status_label: choiceHistory.status_label, docs_url: choiceHistory.docs_url },
+        { id: 'eastmoney_choice_realtime', name: '东方财富 Choice（实时/分钟）', status: choiceStatus.status, status_label: choiceStatus.status_label, docs_url: 'https://quantapi.eastmoney.com/Manual?from=web' },
       ],
     },
     {

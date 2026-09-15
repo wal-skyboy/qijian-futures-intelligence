@@ -125,6 +125,13 @@ EASTMONEY_CHOICE_TOKEN=
 EASTMONEY_CHOICE_API_URL=
 EASTMONEY_CONTRACT_CODES={"au":"AU0.SHF","ag":"AG0.SHF","cu":"CU0.SHF","sn":"SN0.SHF","sc":"SC0.INE"}
 EASTMONEY_NEWS_FEED_URL=
+# 历史/研究 sidecar（只在本人私有会话测试，不向公开版分发授权行）
+EASTMONEY_CHOICE_HISTORY_TOKEN=
+EASTMONEY_CHOICE_HISTORY_API_URL=
+EASTMONEY_CHOICE_HISTORY_INDICATORS=open,high,low,close,volume
+EASTMONEY_CHOICE_HISTORY_TIMEOUT_MS=5000
+# 未取得实时/分钟授权前保持 false
+EASTMONEY_CHOICE_REALTIME_ENABLED=false
 CHINA_SOURCE_TIMEOUT_MS=8000
 ```
 
@@ -134,7 +141,24 @@ Choice 连续合约代码使用东财格式：沪金、沪银、沪铜、沪锡�
 
 本次本机 SDK 联调已确认：`c.start("ForceLogin=1,USEHTTP=1,HTTPTimeout=30")` 返回 `0 success`，`cec("AU0.SHF,AG0.SHF")` 也返回代码有效；但 `csqsnapshot("AU0.SHF", ...)` 返回 `10001012 insufficient user access`。因此当前阻塞点是 Choice 账号未开通期货实时快照（CSQ/CSQS）权限，而不是 Mac、HTTP、动态库或连续合约代码问题。站点适配器现在会识别 SDK/sidecar 返回的 `ErrorCode`/`ErrorMsg` 及 `10001012`，在“同花顺 × Choice”卡片中显示权限类型、错误码和下一步，不会把空结果误报成实时行情。
 
-Choice 适配器使用服务端 HTTPS sidecar 合同：平台向 `EASTMONEY_CHOICE_API_URL` 发送 `{ "codes": ["AU0.SHF", "AG0.SHF", "CU0.SHF", "SN0.SHF", "SC0.INE"], "fields": ["latest", "change_pct", "open", "high", "low", "volume", "open_interest", "bid", "ask"] }`，sidecar 可使用官方 Python SDK/C++/Java SDK 访问 Choice，并返回 `{ "items": [{"code":"AU0.SHF","latest":0,"change_pct":0,"as_of":"..."}] }`；若 SDK 返回 `{ "ErrorCode": 10001012, "ErrorMsg": "insufficient user access", "Data": {} }`，应原样保留错误码供平台诊断。令牌只放服务端环境变量或 sidecar 密钥存储，不放浏览器、Git 或聊天消息。
+Choice 适配器现在明确拆成两条通道。历史/研究通道使用官方 `c.csd` 序列函数，`Period=1/2/3/4` 分别对应日、周、月、年，可用于回测、估值、财务、行业和融资融券研究；实时/分钟通道使用 CSQ/CSQS，未获交易所或行情产品授权时默认完全不调用。官方函数、参数和 SDK 下载入口见 [Choice 产品手册](https://quantapi.eastmoney.com/Manual?from=web)、[Choice Python SDK 手册](https://quantapi.eastmoney.com/Upload/EMQuantAPI_Python.pdf?_=639058106254967798) 和 [Choice 下载中心](https://quantapi.eastmoney.com/Download?from=web)。
+
+历史通道通过本人可控的 HTTPS sidecar 接入，平台不会猜测 Choice 未公开的 HTTP 地址，也不会把授权历史行输出给公开访客。sidecar 收到如下请求后，用官方 SDK 调 `c.csd(codes, indicators, startdate, enddate, "Period=1,Order=1,AdjustFlag=1,Market=CNFESF,Ispandas=0")`，再返回归一化 JSON：
+
+```json
+{
+  "function": "csd",
+  "codes": ["AU0.SHF", "AG0.SHF"],
+  "indicators": "open,high,low,close,volume",
+  "startdate": "2026-01-01",
+  "enddate": "2026-09-15",
+  "options": "Period=1,Order=1,AdjustFlag=1,Market=CNFESF,Ispandas=0"
+}
+```
+
+返回可使用 `{ "items": [{"code":"AU0.SHF","date":"2026-09-15","open":0,"high":0,"low":0,"close":0,"volume":0}] }`，也可直接返回 SDK 的 `Codes/Indicators/Dates/Data` 结构。将 sidecar 的 HTTPS 地址写入 `EASTMONEY_CHOICE_HISTORY_API_URL`，令牌写入 `EASTMONEY_CHOICE_HISTORY_TOKEN`，随后在本人私有版点击“测试 AU0.SHF 日线”。站点只保存归一化行和来源标签，令牌不进入浏览器、Git 或聊天消息；测试接口受私有会话保护，公开访客无法读取授权历史数据。
+
+当前已知联调结果：`c.start("ForceLogin=1,USEHTTP=1,HTTPTimeout=30")` 和 `cec("AU0.SHF,AG0.SHF")` 成功，但 `csqsnapshot("AU0.SHF", ...)` 返回 `10001012 insufficient user access`。这说明 Choice 登录、HTTP 和连续合约代码均正常，缺的是实时快照权限；因此 `EASTMONEY_CHOICE_REALTIME_ENABLED` 保持 `false`。只有取得实时/分钟授权、完成实测并确认允许的展示范围后，才可改为 `true`，并重新部署服务端。
 
 适配器会保留每个来源的合约、价格、时间戳和数据标签，并按来源中位价计算校准值：至少两个来源且价差不超过 0.5% 才显示“可用于研究校准”；否则显示“单源待核对/差异需复核”，不合成交易价。资讯按标题和原文链接去重，策略卡只输出“条件偏多/条件偏空/等待确认”、触发条件、失效条件和仓位边界；“证据置信度”不是胜率，也不构成投资建议。
 

@@ -1,4 +1,5 @@
 import { domesticDelayedBoard } from './domestic.js';
+import { choiceHistoryStatus, choiceRealtimeEnabled } from './choice-history.js';
 
 const CACHE_TTL_MS = 30_000;
 // Keep the aggregate public-source endpoint responsive even when an optional
@@ -635,6 +636,16 @@ async function fetchChoiceMarket(env) {
   const endpoint = envValue(env, [info.urlKey]);
   if (!token || !endpoint) return { source: sourceStatus(info, 'not_configured', !token ? '未配置 EASTMONEY_CHOICE_TOKEN' : '未配置 EASTMONEY_CHOICE_API_URL'), items: [], news: [] };
   if (!/^https:\/\//i.test(endpoint)) return { source: sourceStatus(info, 'provider_error', 'Choice API 地址必须使用 HTTPS'), items: [], news: [] };
+  if (!choiceRealtimeEnabled(env)) {
+    return {
+      source: sourceStatus(info, 'needs_authorization', 'Choice 实时/分钟行情未获授权；当前严格不调用 CSQ/CSQS。', {
+        error_kind: 'realtime_not_authorized',
+        next_step: '取得 Choice/交易所实时行情授权后，确认授权范围再设置 EASTMONEY_CHOICE_REALTIME_ENABLED=true。',
+        updated_at: nowIso(),
+      }),
+      items: [], news: [],
+    };
+  }
   const codes = configuredCodes(env, 'EASTMONEY_CONTRACT_CODES');
   const body = { codes: CONTRACTS.map((item) => codes[item.symbol] || item.choice || item.ths), fields: ['latest', 'change_pct', 'open', 'high', 'low', 'volume', 'open_interest', 'bid', 'ask'] };
   try {
@@ -800,6 +811,10 @@ export async function chinaSources(env = {}) {
     envValue(env, ['THS_IFIND_TOKEN_URL']),
     envValue(env, ['THS_IFIND_INDICATORS']),
     envValue(env, ['EASTMONEY_CHOICE_API_URL']),
+    envValue(env, ['EASTMONEY_CHOICE_HISTORY_TOKEN']),
+    envValue(env, ['EASTMONEY_CHOICE_HISTORY_API_URL']),
+    envValue(env, ['EASTMONEY_CHOICE_HISTORY_INDICATORS']),
+    envValue(env, ['EASTMONEY_CHOICE_REALTIME_ENABLED']),
     envValue(env, ['THS_CONTRACT_CODES']),
     envValue(env, ['EASTMONEY_CONTRACT_CODES']),
     envValue(env, ['THS_NEWS_FEED_URL']),
@@ -811,12 +826,14 @@ export async function chinaSources(env = {}) {
   ].join('|');
   if (cached.payload && cached.key === cacheKey && Date.now() < cached.expiresAt) return { ...cached.payload, sync: { ...cached.payload.sync, cached: true } };
   const started = Date.now();
+  const choiceHistory = choiceHistoryStatus(env);
   const [thsMarket, choiceMarket, thsNews, choiceNews, domestic] = await Promise.all([
     safeCall(() => fetchThsMarket(env)), safeCall(() => fetchChoiceMarket(env)), safeCall(() => fetchNewsFeed(env, SOURCE_INFO.ths_ifind)), safeCall(() => fetchNewsFeed(env, SOURCE_INFO.eastmoney_choice)), safeCall(() => domesticDelayedBoard(env)),
   ]);
   const sourceCards = [
     thsMarket.source || sourceStatus(SOURCE_INFO.ths_ifind, 'provider_error', thsMarket.error || 'iFinD 未返回'),
     choiceMarket.source || sourceStatus(SOURCE_INFO.eastmoney_choice, 'provider_error', choiceMarket.error || 'Choice 未返回'),
+    choiceHistory,
     thsNews.source || sourceStatus(SOURCE_INFO.ths_ifind, 'provider_error', thsNews.error || '同花顺资讯 Feed 未返回'),
     choiceNews.source || sourceStatus(SOURCE_INFO.eastmoney_choice, 'provider_error', choiceNews.error || '东方财富资讯 Feed 未返回'),
   ];
@@ -828,7 +845,7 @@ export async function chinaSources(env = {}) {
       return groups;
     }
     const statuses = [previous.status, card.status];
-    const status = statuses.includes('ok') ? 'ok' : statuses.includes('provider_error') ? 'provider_error' : statuses.includes('empty') ? 'empty' : 'not_configured';
+    const status = statuses.includes('ok') ? 'ok' : statuses.includes('provider_error') ? 'provider_error' : statuses.includes('needs_authorization') ? 'needs_authorization' : statuses.includes('error') ? 'error' : statuses.includes('empty') ? 'empty' : statuses.includes('needs_setup') ? 'needs_setup' : 'not_configured';
     const messages = [previous.message, card.message].filter(Boolean);
     groups[card.id] = {
       ...previous,
@@ -848,12 +865,12 @@ export async function chinaSources(env = {}) {
   const news = dedupeNews([...(thsNews.news || []), ...(choiceNews.news || [])]);
   const calibration = buildCalibration(baselineItems, sourceItems);
   const strategies = buildStrategies(calibration, news);
-  const configuredSourceCount = dedupedCards.filter((card) => card.status !== 'not_configured' && ['同花顺 iFinD', '东方财富 Choice'].includes(card.name)).length;
+  const configuredSourceCount = dedupedCards.filter((card) => card.status !== 'not_configured' && ['同花顺 iFinD', '东方财富 Choice'].includes(card.name) && card.kind === 'market+news').length;
   const hasAnyData = sourceItems.length > 0 || baselineItems.some((item) => item.available);
   const status = sourceItems.length && configuredSourceCount >= 1 ? 'ok' : hasAnyData || configuredSourceCount >= 1 ? 'partial' : 'not_configured';
   const syncedAt = nowIso();
   const payload = {
-    status, as_of: syncedAt, items: sourceItems, calibration, strategies, news,
+    status, as_of: syncedAt, items: sourceItems, calibration, strategies, news, choice_history: choiceHistory,
     sources: [
       ...dedupedCards,
       sourceStatus({ ...SOURCE_INFO.ths_ifind, id: 'shfe_official_delayed', name: '上期所官方延时', kind: 'baseline', mode: 'official_delayed' }, baselineItems.some((item) => item.available) ? 'ok' : 'provider_error', baselineItems.some((item) => item.available) ? '官方延时基准已返回' : '官方延时基准暂不可用', { market_count: baselineItems.filter((item) => item.available).length, docs_url: 'https://www.shfe.com.cn/reports/marketdata/delayedquotes/', public_url: 'https://www.shfe.com.cn/data/tradedata/future/delaymarket/delaymarket_all.dat' }),
