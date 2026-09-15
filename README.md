@@ -107,13 +107,18 @@ SimNow 适合先把“CTP 前置 → 本地行情 Bridge → 期鉴私有版”�
 
 ### 同花顺 iFinD × 东方财富 Choice 多源校准
 
+生产环境建议使用长期 `THS_IFIND_REFRESH_TOKEN`，由服务端按官方 `get_access_token` 流程自动换取并缓存 access_token；也可直接设置短期 `THS_IFIND_ACCESS_TOKEN`。适配器会解析 iFinD 官方 `tables` 返回结构，保留合约、指标和时间戳，并在返回错误时只显示脱敏后的状态。
+
 页面的“同花顺 × Choice”区块通过 `/api/v1/sources/china` 汇总国内五个重点合约（沪金、沪银、沪铜、沪锡、上海原油）的授权行情和资讯，并与上期所官方延时基准核对。适配器只接受官方 API 或用户明确配置的 HTTPS JSON/RSS Feed；不抓取网页 HTML、Cookie、登录态，也不逆向终端协议。
 
 EdgeOne 环境变量（全部只放服务端）：
 
 ```env
 THS_IFIND_ACCESS_TOKEN=
+THS_IFIND_REFRESH_TOKEN=
 THS_IFIND_API_URL=
+THS_IFIND_TOKEN_URL=https://quantapi.51ifind.com/api/v1/get_access_token
+THS_IFIND_INDICATORS=latest,changeRatio,open,high,low,volume
 THS_CONTRACT_CODES={"au":"AU.SHF","ag":"AG.SHF","cu":"CU.SHF","sn":"SN.SHF","sc":"SC.INE"}
 THS_NEWS_FEED_URL=
 EASTMONEY_CHOICE_TOKEN=

@@ -50,7 +50,9 @@ export function sourceReadiness(env = {}) {
   const bridgeToken = envValue(env, ['CTP_BRIDGE_TOKEN']);
   const bridgeHttps = isHttps(bridgeUrl);
   const bridgeConfigured = bridgeHttps && Boolean(bridgeToken);
-  const thsToken = envValue(env, ['THS_IFIND_ACCESS_TOKEN', 'THS_ACCESS_TOKEN']);
+  const thsAccessToken = envValue(env, ['THS_IFIND_ACCESS_TOKEN', 'THS_ACCESS_TOKEN']);
+  const thsRefreshToken = envValue(env, ['THS_IFIND_REFRESH_TOKEN', 'THS_REFRESH_TOKEN']);
+  const thsToken = thsAccessToken || thsRefreshToken;
   const thsEndpoint = envValue(env, ['THS_IFIND_API_URL']);
   const choiceToken = envValue(env, ['EASTMONEY_CHOICE_TOKEN', 'CHOICE_ACCESS_TOKEN']);
   const choiceEndpoint = envValue(env, ['EASTMONEY_CHOICE_API_URL']);
@@ -67,8 +69,8 @@ export function sourceReadiness(env = {}) {
   );
   const thsConfig = configuredStatus(
     Boolean(thsToken),
-    '令牌已配置，正在按请求校验接口字段',
-    '需要 iFinD 官方账号令牌',
+    thsAccessToken ? 'access_token 已配置，正在按请求校验接口字段' : 'refresh_token 已配置，服务端自动换取 access_token',
+    '需要 iFinD 官方账号令牌（access_token 或 refresh_token）',
   );
   const choiceConfig = choiceToken && !choiceEndpoint
     ? { status: 'needs_setup', status_label: '缺少官方 API 地址', message: 'Choice 需要同时配置合同提供的 HTTPS API 地址；开发版流量额度不代表期货实时快照权限。' }
@@ -115,11 +117,11 @@ export function sourceReadiness(env = {}) {
       status_label: thsStatus.status === 'configured' && choiceStatus.status === 'configured' ? '双源已配置' : thsStatus.status === 'configured' || choiceStatus.status === 'configured' ? '已配置一源' : '等待授权',
       message: `同花顺：${thsStatus.status_label}；东方财富：${choiceStatus.status_label}。`,
       next_step: '在服务端填入对应令牌和官方 HTTPS API 地址，刷新“同花顺 × Choice”区块',
-      docs_url: 'https://quantapi.51ifind.com/gwstatic/static/ds_web/quantapi-web/help-center/manual.html',
+      docs_url: 'https://quantapi.10jqka.com.cn/gwstatic/static/ds_web/quantapi-web/help-center/manual.html',
       public_url: 'https://choice.eastmoney.com/product/datacenter',
       safe_configured: thsStatus.status === 'configured' || choiceStatus.status === 'configured',
       providers: [
-        { id: 'ths_ifind', name: '同花顺 iFinD', status: thsStatus.status, status_label: thsStatus.status_label, docs_url: 'https://quantapi.51ifind.com/gwstatic/static/ds_web/quantapi-web/help-center/manual.html' },
+        { id: 'ths_ifind', name: '同花顺 iFinD', status: thsStatus.status, status_label: thsStatus.status_label, docs_url: 'https://quantapi.10jqka.com.cn/gwstatic/static/ds_web/quantapi-web/help-center/manual.html' },
         { id: 'eastmoney_choice', name: '东方财富 Choice', status: choiceStatus.status, status_label: choiceStatus.status_label, docs_url: 'https://quantapi.eastmoney.com/' },
       ],
     },

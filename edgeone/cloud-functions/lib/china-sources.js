@@ -8,7 +8,13 @@ const CACHE_TTL_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 1600;
 const MAX_TIMEOUT_MS = 2500;
 const THS_API_URL = 'https://quantapi.51ifind.com/api/v1/real_time_quotation';
-const THS_DOCS_URL = 'https://quantapi.51ifind.com/gwstatic/static/ds_web/quantapi-web/help-center/manual.html';
+const THS_TOKEN_URL = 'https://quantapi.51ifind.com/api/v1/get_access_token';
+const THS_DEFAULT_INDICATORS = 'latest,changeRatio,open,high,low,volume';
+// iFinD documents access tokens as valid for seven days. Refresh a little
+// earlier so a long-running worker never sends a token that expires during a
+// request; the refresh token itself is never returned or logged.
+const THS_ACCESS_TOKEN_CACHE_MS = (7 * 24 * 60 * 60 * 1000) - (60 * 60 * 1000);
+const THS_DOCS_URL = 'https://quantapi.10jqka.com.cn/gwstatic/static/ds_web/quantapi-web/help-center/manual.html';
 const THS_PUBLIC_URL = 'https://futures.10jqka.com.cn/';
 const EASTMONEY_DOCS_URL = 'https://quantapi.eastmoney.com/';
 const EASTMONEY_PUBLIC_URL = 'https://futures.eastmoney.com/';
@@ -24,7 +30,7 @@ const CONTRACTS = [
 const SOURCE_INFO = {
   ths_ifind: {
     id: 'ths_ifind', name: '同花顺 iFinD', kind: 'market+news', mode: 'official_authorized_api',
-    tokenKeys: ['THS_IFIND_ACCESS_TOKEN', 'THS_ACCESS_TOKEN'], urlKey: 'THS_IFIND_API_URL', feedKey: 'THS_NEWS_FEED_URL',
+    tokenKeys: ['THS_IFIND_ACCESS_TOKEN', 'THS_ACCESS_TOKEN'], refreshTokenKeys: ['THS_IFIND_REFRESH_TOKEN', 'THS_REFRESH_TOKEN'], urlKey: 'THS_IFIND_API_URL', tokenUrlKey: 'THS_IFIND_TOKEN_URL', indicatorsKey: 'THS_IFIND_INDICATORS', feedKey: 'THS_NEWS_FEED_URL',
     docs_url: THS_DOCS_URL, public_url: THS_PUBLIC_URL,
   },
   eastmoney_choice: {
@@ -35,6 +41,7 @@ const SOURCE_INFO = {
 };
 
 let cached = { key: '', expiresAt: 0, payload: null };
+let thsTokenCache = { refreshToken: '', accessToken: '', expiresAt: 0 };
 
 function providerTimeout(env) {
   const requested = Number(env?.CHINA_SOURCE_TIMEOUT_MS);
@@ -163,6 +170,72 @@ function envValue(env, keys) {
   return '';
 }
 
+function safeHttpStatus(status) {
+  return Number.isFinite(Number(status)) ? Number(status) : null;
+}
+
+function thsErrorDetails(code, message, httpStatus = null) {
+  const codeText = text(code);
+  const messageText = text(message).replace(/((?:access|refresh)[_-]?token|token)\s*[:=]\s*[^\s,;]+/gi, '$1=[redacted]').slice(0, 180);
+  const status = safeHttpStatus(httpStatus);
+  const combined = `${codeText} ${messageText} ${status || ''}`.toLowerCase();
+  const displayCode = codeText || (status ? `HTTP ${status}` : '');
+  if (/401|unauthori[sz]ed|invalid token|token expired|令牌无效|令牌过期|invalid.*access.?token|access.?token.*(?:invalid|expired)/.test(combined)) {
+    return {
+      error_code: displayCode || '401', error_kind: 'authentication_error',
+      message: `iFinD 令牌认证失败${displayCode ? `（${displayCode}）` : ''}。`,
+      next_step: '在 iFinD 官方帮助中心重新生成有效令牌，或配置长期 refresh_token 让服务端自动换取 access_token。',
+    };
+  }
+  if (/10001012|insufficient|no access|not authorized|forbidden|permission|权限不足|未开通|未授权|没有权限/.test(combined)) {
+    return {
+      error_code: displayCode || '10001012', error_kind: 'insufficient_user_access',
+      message: `iFinD 账号没有当前接口权限${displayCode ? `（${displayCode}）` : ''}。`,
+      next_step: '在 iFinD 账户确认已开通实时行情（THS_RQ）及对应期货品种权限。',
+    };
+  }
+  if (/429|rate.?limit|too many requests|流量|频率/.test(combined)) {
+    return {
+      error_code: displayCode || '429', error_kind: 'rate_limited',
+      message: `iFinD 请求频率或流量受限${displayCode ? `（${displayCode}）` : ''}。`,
+      next_step: '降低轮询频率、检查权限额度，并使用服务端缓存。',
+    };
+  }
+  if (/timeout|timed out|aborted|超时/.test(combined)) {
+    return {
+      error_code: displayCode, error_kind: 'timeout',
+      message: `iFinD 请求超时${displayCode ? `（${displayCode}）` : ''}。`,
+      next_step: '检查官方 HTTPS 地址、网络连通性和 iFinD 服务状态。',
+    };
+  }
+  return {
+    error_code: displayCode, error_kind: 'provider_error',
+    message: `iFinD 返回错误${displayCode ? `（${displayCode}）` : ''}${messageText ? `：${messageText}` : '。'}`,
+    next_step: '核对 iFinD 官方 API 地址、请求字段、令牌和账号服务状态。',
+  };
+}
+
+class ThsProviderError extends Error {
+  constructor(details) {
+    super(details.message);
+    this.name = 'ThsProviderError';
+    this.details = details;
+  }
+}
+
+function thsFailureFromPayload(payload, httpStatus = null) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const code = payload.errorcode ?? payload.errorCode ?? payload.error_code ?? payload.ErrorCode ?? payload.code ?? payload.errcode;
+  const errorValue = payload.error;
+  const message = payload.errmsg ?? payload.errorMsg ?? payload.error_message ?? payload.ErrorMsg ?? payload.message ?? payload.msg ?? (typeof errorValue === 'string' ? errorValue : '');
+  const codeText = text(code).toLowerCase();
+  const failedHttp = Number.isFinite(Number(httpStatus)) && Number(httpStatus) >= 400;
+  const failedCode = codeText && !['0', '200', 'ok', 'success', 'succeed'].includes(codeText) && (/^-?\d+$/.test(codeText) || /error|fail|denied|permission|unauthor/i.test(codeText));
+  const hasMessage = Boolean(text(message));
+  if (failedHttp || failedCode || (hasMessage && errorValue && text(errorValue))) return thsErrorDetails(code, message, httpStatus);
+  return null;
+}
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -253,6 +326,148 @@ function rowsFromPayload(payload) {
   return unique;
 }
 
+function stringList(value) {
+  if (Array.isArray(value)) return value.flatMap(stringList).filter(Boolean);
+  if (value && typeof value === 'object') {
+    for (const key of ['value', 'values', 'data', 'items']) {
+      if (value[key] !== undefined) return stringList(value[key]);
+    }
+    return [];
+  }
+  const raw = text(value);
+  if (!raw) return [];
+  return raw.split(/[,;，；]/).map((item) => item.trim()).filter(Boolean);
+}
+
+function thsCodesFrom(value) {
+  return stringList(value).filter((item) => /[A-Za-z0-9]+[._-][A-Za-z0-9]+/.test(item) || CONTRACTS.some((definition) => definition.aliases.includes(item.toLowerCase())));
+}
+
+function thsTimesFrom(value) {
+  if (Array.isArray(value)) return value.flatMap(thsTimesFrom).filter(Boolean);
+  if (value && typeof value === 'object') {
+    for (const key of ['value', 'values', 'data', 'items']) {
+      if (value[key] !== undefined) return thsTimesFrom(value[key]);
+    }
+    return [];
+  }
+  const raw = text(value);
+  return raw ? raw.split(/[,;，；]/).map((item) => item.trim()).filter(Boolean) : [];
+}
+
+function thsValueAt(value, index, code = '') {
+  if (Array.isArray(value)) {
+    return value[index] ?? (value.length === 1 ? value[0] : value[value.length - 1]);
+  }
+  if (value && typeof value === 'object') {
+    const normalizedCode = normaliseKey(code);
+    if (normalizedCode) {
+      const codeEntry = Object.entries(value).find(([key]) => normaliseKey(key) === normalizedCode);
+      if (codeEntry) return thsValueAt(codeEntry[1], index, code);
+    }
+    for (const key of ['value', 'raw', 'val', 'number', 'data']) {
+      if (value[key] !== undefined) return thsValueAt(value[key], index, code);
+    }
+    if (value[String(index)] !== undefined) return thsValueAt(value[String(index)], index, code);
+  }
+  return value;
+}
+
+function inferCodesFromThsTable(table) {
+  if (!table || typeof table !== 'object' || Array.isArray(table)) return [];
+  const codes = [];
+  Object.values(table).forEach((value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+    Object.keys(value).forEach((key) => {
+      if ((/[A-Za-z0-9]+[._-][A-Za-z0-9]+/.test(key) || CONTRACTS.some((definition) => definition.aliases.includes(key.toLowerCase()))) && !codes.includes(key)) codes.push(key);
+    });
+  });
+  return codes;
+}
+
+function looksLikeThsTable(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return Object.keys(value).some((key) => /^(latest|last|price|open|high|low|close|change|changeRatio|volume|openInterest|bid1|ask1)$/i.test(key));
+}
+
+function primitiveThsMeta(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const metadata = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (['table', 'dataTable', 'quoteTable', 'values'].includes(key)) continue;
+    if (entry === null || typeof entry !== 'object') metadata[key] = entry;
+  }
+  return metadata;
+}
+
+function flattenThsTable(table, codes, times, metadata = {}) {
+  if (Array.isArray(table)) {
+    const rows = table.filter((row) => row && typeof row === 'object' && !Array.isArray(row));
+    if (rows.length && rows.some((row) => thsCodesFrom(row.thscode || row.thsCode || row.code || row.codes).length)) {
+      return rows;
+    }
+  }
+  if (!table || typeof table !== 'object') return [];
+  const resolvedCodes = codes.length ? codes : inferCodesFromThsTable(table);
+  const count = resolvedCodes.length || 1;
+  const fields = Object.entries(table);
+  return Array.from({ length: count }, (_, index) => {
+    const code = resolvedCodes[index] || '';
+    const row = { ...metadata };
+    if (code) row.thscode = code;
+    const time = thsValueAt(times, index, code);
+    if (time !== undefined && time !== null && text(time)) row.time = time;
+    fields.forEach(([key, value]) => {
+      if (key === 'thscode' || key === 'thsCode' || key === 'code' || key === 'codes' || key === 'time' || key === 'times') return;
+      row[key] = thsValueAt(value, index, code);
+    });
+    return row;
+  });
+}
+
+/**
+ * iFinD's HTTP response uses a `tables` envelope. Depending on the SDK
+ * version, `thscode`, `time` and the indicator values may be scalars, arrays,
+ * or maps keyed by code. Flatten that documented shape before normalising a
+ * quote so the public adapter does not silently drop valid futures rows.
+ */
+export function extractThsRows(payload) {
+  const records = [];
+  const walk = (value, context = { codes: [], times: [] }, depth = 0) => {
+    if (!value || depth > 8) return;
+    if (Array.isArray(value)) {
+      value.forEach((item) => walk(item, context, depth + 1));
+      return;
+    }
+    if (typeof value !== 'object') return;
+    const ownCodes = thsCodesFrom(value.thscode ?? value.thsCode ?? value.securityCode ?? value.code ?? value.codes);
+    const ownTimes = thsTimesFrom(value.time ?? value.times ?? value.timestamp ?? value.datetime ?? value.date);
+    const next = {
+      codes: ownCodes.length ? ownCodes : context.codes,
+      times: ownTimes.length ? ownTimes : context.times,
+    };
+    const candidate = value.table ?? value.dataTable ?? value.quoteTable ?? value.values ?? (looksLikeThsTable(value) ? value : null);
+    if (candidate && (typeof candidate === 'object' || Array.isArray(candidate))) records.push({ table: candidate, codes: next.codes, times: next.times, metadata: primitiveThsMeta(value) });
+    Object.entries(value).forEach(([key, child]) => {
+      if (['table', 'dataTable', 'quoteTable', 'values'].includes(key)) return;
+      walk(child, next, depth + 1);
+    });
+  };
+  walk(payload);
+  const structured = records.flatMap((record) => flattenThsTable(record.table, record.codes, record.times, record.metadata));
+  if (!structured.length) return rowsFromPayload(payload);
+  const unique = [];
+  const seen = new Set();
+  structured.forEach((row) => {
+    const key = JSON.stringify(row);
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(row);
+    }
+  });
+  return unique;
+}
+
 function defaultCodes(key) {
   const field = key === 'EASTMONEY_CONTRACT_CODES' ? 'choice' : 'ths';
   return Object.fromEntries(CONTRACTS.map((item) => [item.symbol, item[field] || item.ths]));
@@ -323,28 +538,94 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TIMEOUT_M
   }
 }
 
+function findThsAccessToken(value, depth = 0) {
+  if (!value || depth > 4) return '';
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const token = findThsAccessToken(item, depth + 1);
+      if (token) return token;
+    }
+    return '';
+  }
+  if (typeof value !== 'object') return '';
+  for (const key of ['access_token', 'accessToken', 'AccessToken']) {
+    const token = text(value[key]);
+    if (token) return token;
+  }
+  for (const key of ['data', 'result', 'response', 'body']) {
+    const token = findThsAccessToken(value[key], depth + 1);
+    if (token) return token;
+  }
+  return '';
+}
+
+async function resolveThsAccessToken(env) {
+  const directToken = envValue(env, SOURCE_INFO.ths_ifind.tokenKeys);
+  if (directToken) return { token: directToken, authMode: 'access_token' };
+  const refreshToken = envValue(env, SOURCE_INFO.ths_ifind.refreshTokenKeys);
+  if (!refreshToken) return { token: '', authMode: 'missing' };
+  if (thsTokenCache.refreshToken === refreshToken && thsTokenCache.accessToken && Date.now() < thsTokenCache.expiresAt) {
+    return { token: thsTokenCache.accessToken, authMode: 'refresh_token' };
+  }
+  const tokenUrl = envValue(env, [SOURCE_INFO.ths_ifind.tokenUrlKey]) || THS_TOKEN_URL;
+  if (!/^https:\/\//i.test(tokenUrl)) {
+    throw new ThsProviderError(thsErrorDetails(null, 'iFinD token URL must use HTTPS'));
+  }
+  let response;
+  try {
+    response = await fetchWithTimeout(tokenUrl, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', refresh_token: refreshToken } }, providerTimeout(env));
+  } catch (cause) {
+    throw new ThsProviderError(thsErrorDetails(null, cause instanceof Error ? cause.message : 'iFinD token exchange failed'));
+  }
+  const rawBody = await response.text();
+  let payload = null;
+  try { payload = rawBody ? JSON.parse(rawBody) : null; } catch { payload = null; }
+  const payloadFailure = thsFailureFromPayload(payload, response.status);
+  if (payloadFailure) throw new ThsProviderError(payloadFailure);
+  if (!response.ok) throw new ThsProviderError(thsErrorDetails(null, `HTTP ${response.status}`, response.status));
+  const accessToken = findThsAccessToken(payload);
+  if (!accessToken) throw new ThsProviderError(thsErrorDetails(null, 'iFinD token response did not include access_token'));
+  const expiresIn = Number(payload?.expires_in ?? payload?.expiresIn ?? payload?.data?.expires_in ?? payload?.data?.expiresIn);
+  const ttl = Number.isFinite(expiresIn) && expiresIn > 60 ? Math.min(expiresIn * 1000, THS_ACCESS_TOKEN_CACHE_MS) : THS_ACCESS_TOKEN_CACHE_MS;
+  thsTokenCache = { refreshToken, accessToken, expiresAt: Date.now() + ttl };
+  return { token: accessToken, authMode: 'refresh_token' };
+}
+
 async function fetchThsMarket(env) {
   const info = SOURCE_INFO.ths_ifind;
-  const token = envValue(env, info.tokenKeys);
-  if (!token) return { source: sourceStatus(info, 'not_configured', '未配置 THS_IFIND_ACCESS_TOKEN'), items: [], news: [] };
+  let auth;
+  try {
+    auth = await resolveThsAccessToken(env);
+  } catch (cause) {
+    const details = cause instanceof ThsProviderError ? cause.details : thsErrorDetails(null, cause instanceof Error ? cause.message : 'iFinD token exchange failed');
+    return { source: sourceStatus(info, 'provider_error', details.message, { error_code: details.error_code, error_kind: details.error_kind, next_step: details.next_step, updated_at: nowIso() }), items: [], news: [] };
+  }
+  if (!auth.token) return { source: sourceStatus(info, 'not_configured', '未配置 THS_IFIND_ACCESS_TOKEN 或 THS_IFIND_REFRESH_TOKEN'), items: [], news: [] };
   const endpoint = envValue(env, [info.urlKey]) || THS_API_URL;
   if (!/^https:\/\//i.test(endpoint)) return { source: sourceStatus(info, 'provider_error', 'iFinD API 地址必须使用 HTTPS'), items: [], news: [] };
   const codes = configuredCodes(env, 'THS_CONTRACT_CODES');
   const codeList = CONTRACTS.map((item) => codes[item.symbol] || item.ths);
   const body = {
     codes: codeList.join(','),
-    indicators: 'latest,changeRatio,open,high,low,volume,openInterest,bid1,ask1',
+    indicators: envValue(env, [info.indicatorsKey]) || THS_DEFAULT_INDICATORS,
   };
   try {
-    const response = await fetchWithTimeout(endpoint, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', access_token: token, ifindlang: 'cn' }, body: JSON.stringify(body) }, providerTimeout(env));
-    if (!response.ok) throw new Error(`iFinD ${response.status}`);
-    const payload = await response.json();
-    if (payload?.errorcode && String(payload.errorcode) !== '0') throw new Error(text(payload?.errmsg || payload?.message || 'iFinD 返回错误'));
-    const rows = rowsFromPayload(payload);
-    const items = rows.map((row) => normaliseQuote(row, info.id, info.name, info.docs_url)).filter(Boolean);
-    return { source: sourceStatus(info, items.length ? 'ok' : 'empty', items.length ? '已返回授权实时字段' : '接口返回字段不完整', { market_count: items.length, updated_at: nowIso() }), items, news: [] };
+    const response = await fetchWithTimeout(endpoint, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', access_token: auth.token, ifindlang: 'cn' }, body: JSON.stringify(body) }, providerTimeout(env));
+    const rawBody = await response.text();
+    let payload = null;
+    try { payload = rawBody ? JSON.parse(rawBody) : null; } catch { payload = null; }
+    const payloadFailure = thsFailureFromPayload(payload, response.status);
+    if (payloadFailure) throw new ThsProviderError(payloadFailure);
+    if (!response.ok) throw new ThsProviderError(thsErrorDetails(null, `HTTP ${response.status}`, response.status));
+    const rows = extractThsRows(payload);
+    const items = rows.map((row) => normaliseQuote(row, info.id, info.name, info.docs_url, row?.thscode || row?.thsCode || row?.code || row?.symbol || '')).filter(Boolean);
+    return { source: sourceStatus(info, items.length ? 'ok' : 'empty', items.length ? '已返回授权实时字段' : '接口返回字段不完整', { market_count: items.length, updated_at: nowIso(), auth_mode: auth.authMode }), items, news: [] };
   } catch (cause) {
-    return { source: sourceStatus(info, 'provider_error', cause instanceof Error ? cause.message : 'iFinD 请求失败'), items: [], news: [] };
+    const details = cause instanceof ThsProviderError ? cause.details : thsErrorDetails(null, cause instanceof Error ? cause.message : 'iFinD 请求失败');
+    if (auth?.authMode === 'refresh_token' && details.error_kind === 'authentication_error') {
+      thsTokenCache = { refreshToken: '', accessToken: '', expiresAt: 0 };
+    }
+    return { source: sourceStatus(info, 'provider_error', details.message, { error_code: details.error_code, error_kind: details.error_kind, next_step: details.next_step, updated_at: nowIso(), auth_mode: auth?.authMode }), items: [], news: [] };
   }
 }
 
@@ -513,8 +794,11 @@ async function safeCall(task) {
 export async function chinaSources(env = {}) {
   const cacheKey = [
     envValue(env, SOURCE_INFO.ths_ifind.tokenKeys),
+    envValue(env, SOURCE_INFO.ths_ifind.refreshTokenKeys),
     envValue(env, SOURCE_INFO.eastmoney_choice.tokenKeys),
     envValue(env, ['THS_IFIND_API_URL']),
+    envValue(env, ['THS_IFIND_TOKEN_URL']),
+    envValue(env, ['THS_IFIND_INDICATORS']),
     envValue(env, ['EASTMONEY_CHOICE_API_URL']),
     envValue(env, ['THS_CONTRACT_CODES']),
     envValue(env, ['EASTMONEY_CONTRACT_CODES']),
@@ -585,4 +869,4 @@ export async function chinaSources(env = {}) {
   return payload;
 }
 
-export { CONTRACTS, SOURCE_INFO, THS_API_URL, THS_DOCS_URL, EASTMONEY_DOCS_URL, classifyChoiceFailure, choiceFailureFromPayload };
+export { CONTRACTS, SOURCE_INFO, THS_API_URL, THS_TOKEN_URL, THS_DOCS_URL, EASTMONEY_DOCS_URL, classifyChoiceFailure, choiceFailureFromPayload };
