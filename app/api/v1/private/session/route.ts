@@ -4,8 +4,8 @@ import {
   sessionCookie,
   verifyAccessCode,
   verifyPrivateSession,
-} from '../../../../../edgeone/cloud-functions/lib/private-auth.js';
-import { json } from '../../../../../edgeone/cloud-functions/lib/market.js';
+} from '../../../../../edgeone/lib/private-auth.js';
+import { json } from '../../../../../edgeone/lib/market.js';
 import { runtimeEnv } from '../../../_runtime';
 
 export const runtime = 'edge';

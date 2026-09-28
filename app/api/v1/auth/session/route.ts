@@ -1,7 +1,7 @@
 import {
   onRequestDeleteSession,
   onRequestGetSession,
-} from '../../../../../edgeone/cloud-functions/lib/public-auth.js';
+} from '../../../../../edgeone/lib/public-auth.js';
 import { runtimeEnv } from '../../../_runtime';
 
 export const runtime = 'edge';

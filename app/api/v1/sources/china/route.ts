@@ -1,5 +1,5 @@
-import { chinaSources } from '../../../../../edgeone/cloud-functions/lib/china-sources.js';
-import { json } from '../../../../../edgeone/cloud-functions/lib/market.js';
+import { chinaSources } from '../../../../../edgeone/lib/china-sources.js';
+import { json } from '../../../../../edgeone/lib/market.js';
 import { runtimeEnv } from '../../../_runtime';
 
 export const runtime = 'edge';

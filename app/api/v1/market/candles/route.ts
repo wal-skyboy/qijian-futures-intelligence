@@ -1,4 +1,4 @@
-import { json, marketCandles } from '../../../../../edgeone/cloud-functions/lib/market.js';
+import { json, marketCandles } from '../../../../../edgeone/lib/market.js';
 import { runtimeEnv } from '../../../_runtime';
 
 export const runtime = 'edge';

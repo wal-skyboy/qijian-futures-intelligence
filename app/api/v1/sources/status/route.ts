@@ -1,5 +1,5 @@
-import { sourceReadiness } from '../../../../../edgeone/cloud-functions/lib/source-status.js';
-import { json } from '../../../../../edgeone/cloud-functions/lib/market.js';
+import { sourceReadiness } from '../../../../../edgeone/lib/source-status.js';
+import { json } from '../../../../../edgeone/lib/market.js';
 import { runtimeEnv } from '../../../_runtime';
 
 export const runtime = 'edge';

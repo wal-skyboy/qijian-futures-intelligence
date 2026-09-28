@@ -1,5 +1,5 @@
-import { globalEvents } from '../../../../edgeone/cloud-functions/lib/events.js';
-import { json } from '../../../../edgeone/cloud-functions/lib/market.js';
+import { globalEvents } from '../../../../edgeone/lib/events.js';
+import { json } from '../../../../edgeone/lib/market.js';
 import { runtimeEnv } from '../../_runtime';
 
 export const runtime = 'edge';

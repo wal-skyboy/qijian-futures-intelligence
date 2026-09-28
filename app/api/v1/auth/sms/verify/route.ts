@@ -1,4 +1,4 @@
-import { onRequestVerifyCode } from '../../../../../../edgeone/cloud-functions/lib/public-auth.js';
+import { onRequestVerifyCode } from '../../../../../../edgeone/lib/public-auth.js';
 import { runtimeEnv } from '../../../../_runtime';
 
 export const runtime = 'edge';

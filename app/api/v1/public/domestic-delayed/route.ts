@@ -1,5 +1,5 @@
-import { domesticDelayedBoard } from '../../../../../edgeone/cloud-functions/lib/domestic.js';
-import { json } from '../../../../../edgeone/cloud-functions/lib/market.js';
+import { domesticDelayedBoard } from '../../../../../edgeone/lib/domestic.js';
+import { json } from '../../../../../edgeone/lib/market.js';
 import { runtimeEnv } from '../../../_runtime';
 
 export const runtime = 'edge';

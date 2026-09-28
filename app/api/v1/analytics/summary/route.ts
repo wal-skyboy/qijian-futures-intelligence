@@ -1,4 +1,4 @@
-import { onRequestSummary } from '../../../../../edgeone/cloud-functions/lib/visitor-analytics.js';
+import { onRequestSummary } from '../../../../../edgeone/lib/visitor-analytics.js';
 import { runtimeEnv } from '../../../_runtime';
 
 export const runtime = 'edge';
