@@ -1,5 +1,5 @@
-import { chinaSources } from '../../../lib/china-sources.js';
-import { json } from '../../../lib/market.js';
+import { chinaSources } from '../../../../lib/china-sources.js';
+import { json } from '../../../../lib/market.js';
 
 export async function onRequestGet({ env }) {
   return json(await chinaSources(env || {}), 200, {

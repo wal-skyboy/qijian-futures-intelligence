@@ -1,5 +1,5 @@
-import { domesticDelayedBoard } from '../../../lib/domestic.js';
-import { json } from '../../../lib/market.js';
+import { domesticDelayedBoard } from '../../../../lib/domestic.js';
+import { json } from '../../../../lib/market.js';
 
 export async function onRequestGet({ env }) {
   return json(await domesticDelayedBoard(env || {}), 200, {

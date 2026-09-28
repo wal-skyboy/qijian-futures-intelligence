@@ -1,11 +1,11 @@
-import { json } from '../../../lib/market.js';
+import { json } from '../../../../lib/market.js';
 import {
   authConfiguration,
   issuePrivateSession,
   sessionCookie,
   verifyAccessCode,
   verifyPrivateSession,
-} from '../../../lib/private-auth.js';
+} from '../../../../lib/private-auth.js';
 
 function noStore(extra = {}) {
   return { 'Cache-Control': 'no-store', Vary: 'Cookie', ...extra };

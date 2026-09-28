@@ -1,5 +1,5 @@
-import { json } from '../../../../lib/market.js';
-import { authConfiguration, verifyPrivateSession } from '../../../../lib/private-auth.js';
+import { json } from '../../../../../lib/market.js';
+import { authConfiguration, verifyPrivateSession } from '../../../../../lib/private-auth.js';
 
 const DEFAULT_TIMEOUT_MS = 5000;
 

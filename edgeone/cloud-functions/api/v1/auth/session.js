@@ -1,7 +1,7 @@
 import {
   onRequestDeleteSession,
   onRequestGetSession,
-} from '../../../lib/public-auth.js';
+} from '../../../../lib/public-auth.js';
 
 export async function onRequestGet({ request, env }) {
   return onRequestGetSession({ request, env: env || {} });

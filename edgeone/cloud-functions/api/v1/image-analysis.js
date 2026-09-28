@@ -1,4 +1,4 @@
-import { json } from '../../lib/market.js';
+import { json } from '../../../lib/market.js';
 
 const assetNames = { gold: '黄金', silver: '白银', copper: '铜', tin: '锡', crude: '原油', usd: '美元' };
 const MAX_ITEMS = 6;

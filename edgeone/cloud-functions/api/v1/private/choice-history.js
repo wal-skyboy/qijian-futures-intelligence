@@ -1,6 +1,6 @@
-import { json } from '../../../lib/market.js';
-import { authConfiguration, verifyPrivateSession } from '../../../lib/private-auth.js';
-import { fetchChoiceHistory } from '../../../lib/choice-history.js';
+import { json } from '../../../../lib/market.js';
+import { authConfiguration, verifyPrivateSession } from '../../../../lib/private-auth.js';
+import { fetchChoiceHistory } from '../../../../lib/choice-history.js';
 
 function noStore(extra = {}) {
   return { 'Cache-Control': 'no-store', Vary: 'Cookie', ...extra };

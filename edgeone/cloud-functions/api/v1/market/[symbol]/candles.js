@@ -1,4 +1,4 @@
-import { json, marketCandles } from '../../../../lib/market.js';
+import { json, marketCandles } from '../../../../../lib/market.js';
 
 export async function onRequestGet({ params, request, env }) {
   const url = new URL(request.url);

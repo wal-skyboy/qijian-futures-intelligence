@@ -1,5 +1,5 @@
-import { globalEvents } from '../../lib/events.js';
-import { json } from '../../lib/market.js';
+import { globalEvents } from '../../../lib/events.js';
+import { json } from '../../../lib/market.js';
 
 export async function onRequestGet({ env, request }) {
   const fresh = new URL(request?.url || 'https://events.local').searchParams.get('fresh') === '1';

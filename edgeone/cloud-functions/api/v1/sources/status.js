@@ -1,5 +1,5 @@
-import { json } from '../../../lib/market.js';
-import { sourceReadiness } from '../../../lib/source-status.js';
+import { json } from '../../../../lib/market.js';
+import { sourceReadiness } from '../../../../lib/source-status.js';
 
 export async function onRequestGet({ env }) {
   return json(sourceReadiness(env || {}), 200, {
