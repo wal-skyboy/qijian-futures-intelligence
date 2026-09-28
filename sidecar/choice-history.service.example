@@ -1,0 +1,23 @@
+[Unit]
+Description=Read-only Choice historical data sidecar
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=choice
+Group=choice
+WorkingDirectory=/opt/qijian-sidecar
+Environment=EMQUANT_PYTHON_ROOT=/opt/EMQuantAPI_Python/python3
+EnvironmentFile=/etc/qijian/choice-history.env
+ExecStart=/usr/bin/python3 /opt/qijian-sidecar/sidecar/choice_history_sidecar.py --host 127.0.0.1 --port 8787
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/qijian-choice
+
+[Install]
+WantedBy=multi-user.target
