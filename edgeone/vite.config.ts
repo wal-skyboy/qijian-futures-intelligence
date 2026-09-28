@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment -- EdgeOne installs its own Vite/PostCSS tree. */
 // @ts-nocheck -- EdgeOne installs its own Vite/PostCSS tree; the root type
 // checker otherwise compares two distinct copies of those plugin contracts.
-import tailwindcss from '@tailwindcss/postcss';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
@@ -33,11 +32,6 @@ export default defineConfig({
   },
   plugins: [react()],
   publicDir: publicRoot,
-  css: {
-    postcss: {
-      plugins: [tailwindcss()],
-    },
-  },
   build: {
     outDir: 'build',
     emptyOutDir: true,
