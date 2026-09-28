@@ -167,7 +167,7 @@ function sumRows(rows, key) {
   return rows.reduce((sum, row) => sum + countValue(row, key), 0);
 }
 
-export async function onRequestPost({ request, env }) {
+export async function recordVisitorPost({ request, env }) {
   const environment = env || {};
   const config = analyticsConfiguration(environment);
   if (!config.configured) return unavailable('visitor_analytics_not_configured', '匿名统计尚未配置。');

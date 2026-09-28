@@ -172,7 +172,7 @@ function databaseUnavailable() {
   }, 503, noStore());
 }
 
-export async function onRequestGet({ request, env }) {
+export async function historyRequestGet({ request, env }) {
   const gate = await authorized(request, env);
   if (gate.response) return gate.response;
   const db = historyDatabase(env);
@@ -190,7 +190,7 @@ export async function onRequestGet({ request, env }) {
   }
 }
 
-export async function onRequestPost({ request, env }) {
+export async function historyRequestPost({ request, env }) {
   const gate = await authorized(request, env);
   if (gate.response) return gate.response;
   const db = historyDatabase(env);
@@ -220,7 +220,7 @@ export async function onRequestPost({ request, env }) {
   }
 }
 
-export async function onRequestDelete({ request, env }) {
+export async function historyRequestDelete({ request, env }) {
   const gate = await authorized(request, env);
   if (gate.response) return gate.response;
   const db = historyDatabase(env);
