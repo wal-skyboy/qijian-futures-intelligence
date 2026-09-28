@@ -1,6 +1,6 @@
 # Point choice-sidecar.emcdb.com DNS A/AAAA records to this server first.
 # Caddy obtains and renews the public HTTPS certificate automatically.
-choice-sidecar.emcdb.com {
+qh.emcdb.com {
     reverse_proxy 127.0.0.1:8787
     header {
         Cache-Control "no-store"

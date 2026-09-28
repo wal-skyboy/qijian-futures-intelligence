@@ -7,7 +7,7 @@
 建议使用一台受信的 Linux 云服务器（Ubuntu 22.04/24.04，固定公网 IPv4），只开放 TCP 22、80、443。把服务器公网 IP 添加为：
 
 ```text
-choice-sidecar.emcdb.com  A  <服务器公网IPv4>
+qh.emcdb.com  A  <服务器公网IPv4>
 ```
 
 不要把 Choice SDK 端口直接暴露到公网。服务器安装 Python、Caddy，并把官方 Linux `EMQuantAPI_Python` SDK 上传到 `/opt/EMQuantAPI_Python`。SDK 的账号令牌只在服务器本地按官方方式配置，不上传 Git。
@@ -44,7 +44,7 @@ sudo systemctl enable --now choice-history
 先检查：
 
 ```bash
-curl -fsS https://choice-sidecar.emcdb.com/health
+curl -fsS https://qh.emcdb.com/health
 ```
 
 ## 3. EdgeOne 配置
@@ -52,7 +52,7 @@ curl -fsS https://choice-sidecar.emcdb.com/health
 在生产环境变量中填写：
 
 ```text
-EASTMONEY_CHOICE_HISTORY_API_URL=https://choice-sidecar.emcdb.com/history
+EASTMONEY_CHOICE_HISTORY_API_URL=https://qh.emcdb.com/history
 EASTMONEY_CHOICE_HISTORY_TOKEN=<与服务器 CHOICE_SIDECAR_TOKEN 完全相同>
 ```
 
