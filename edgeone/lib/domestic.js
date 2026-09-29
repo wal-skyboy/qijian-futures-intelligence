@@ -52,7 +52,7 @@ function textOrNull(value) {
 }
 
 function definitionFor(raw, index) {
-  const value = String(raw?.symbol || raw?.code || raw?.instrumentid || raw?.productid || raw?.品种 || '').trim().toLowerCase();
+  const value = String(raw?.symbol || raw?.code || raw?.instrumentid || raw?.instrument || raw?.productid || raw?.contract || raw?.name || raw?.品种 || raw?.品种名称 || '').trim().toLowerCase();
   const aliases = {
     au: 'au', gold: 'au', 沪金: 'au',
     ag: 'ag', silver: 'ag', 沪银: 'ag',
@@ -60,7 +60,11 @@ function definitionFor(raw, index) {
     sn: 'sn', tin: 'sn', 沪锡: 'sn',
     sc: 'sc', crude: 'sc', oil: 'sc', 原油: 'sc',
   };
-  const symbol = aliases[value] || DOMESTIC_DEFINITIONS[index]?.symbol || `provider-${index + 1}`;
+  // SHFE's public file may use a concrete contract (for example au2610), a
+  // product code (au), or a Chinese product name. Match the product prefix so
+  // rows can be grouped correctly instead of falling back to array position.
+  const alias = Object.keys(aliases).find((key) => value === key || value.startsWith(key));
+  const symbol = aliases[value] || (alias ? aliases[alias] : '') || DOMESTIC_DEFINITIONS[index]?.symbol || `provider-${index + 1}`;
   return DOMESTIC_DEFINITIONS.find((item) => item.symbol === symbol) || {
     symbol,
     name: textOrNull(raw?.name || raw?.名称) || symbol.toUpperCase(),

@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import sys
+import threading
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -26,6 +27,7 @@ PERIODS = {"1": 1, "2": 2, "3": 3, "4": 4}
 DEFAULT_INDICATORS = "open,high,low,close,volume"
 MAX_CODES = 20
 MAX_BODY_BYTES = 32 * 1024
+SDK_LOCK = threading.Lock()
 
 
 def utc_now() -> str:
@@ -65,41 +67,43 @@ def sdk_result(request: dict[str, Any], sdk_root: str) -> tuple[dict[str, Any], 
     if text(request.get("function") or "csd").lower() != "csd":
         return error_payload("unsupported_function", "sidecar 只开放只读 csd 历史序列")
 
-    # Keep the SDK call in one short-lived session so a broken provider cannot
-    # leave a background heartbeat running in the HTTP worker.
-    c = load_choice(sdk_root)
-    login = c.start("ForceLogin=1,USEHTTP=1,HTTPTimeout=30")
-    if getattr(login, "ErrorCode", 1) != 0:
-        return {
-            "status": "provider_error",
-            "error_code": str(getattr(login, "ErrorCode", "login")),
-            "message": text(getattr(login, "ErrorMsg", "Choice SDK login failed")),
-            "as_of": utc_now(),
-        }, 502
-    try:
-        result = c.csd(
-            ",".join(codes), indicators, start, end,
-            options or "Period=1,Order=1,AdjustFlag=1,Market=CNFESF,Ispandas=0",
-        )
-        code = getattr(result, "ErrorCode", 1)
-        if code != 0:
+    # The SDK has global import/session state and is not safe to initialize or
+    # use concurrently. Serialize requests so retries cannot deadlock Python's
+    # import lock or leave multiple heartbeat threads behind.
+    with SDK_LOCK:
+        c = load_choice(sdk_root)
+        login = c.start("ForceLogin=1,USEHTTP=1,HTTPTimeout=30")
+        if getattr(login, "ErrorCode", 1) != 0:
             return {
                 "status": "provider_error",
-                "error_code": str(code),
-                "message": text(getattr(result, "ErrorMsg", "Choice csd failed")),
+                "error_code": str(getattr(login, "ErrorCode", "login")),
+                "message": text(getattr(login, "ErrorMsg", "Choice SDK login failed")),
                 "as_of": utc_now(),
             }, 502
-        return {
-            "status": "ok",
-            "function": "csd",
-            "Codes": getattr(result, "Codes", codes),
-            "Indicators": getattr(result, "Indicators", indicators.split(",")),
-            "Dates": getattr(result, "Dates", []),
-            "Data": getattr(result, "Data", {}),
-            "as_of": utc_now(),
-        }, 200
-    finally:
-        c.stop()
+        try:
+            result = c.csd(
+                ",".join(codes), indicators, start, end,
+                options or "Period=1,Order=1,AdjustFlag=1,Market=CNFESF,Ispandas=0",
+            )
+            code = getattr(result, "ErrorCode", 1)
+            if code != 0:
+                return {
+                    "status": "provider_error",
+                    "error_code": str(code),
+                    "message": text(getattr(result, "ErrorMsg", "Choice csd failed")),
+                    "as_of": utc_now(),
+                }, 502
+            return {
+                "status": "ok",
+                "function": "csd",
+                "Codes": getattr(result, "Codes", codes),
+                "Indicators": getattr(result, "Indicators", indicators.split(",")),
+                "Dates": getattr(result, "Dates", []),
+                "Data": getattr(result, "Data", {}),
+                "as_of": utc_now(),
+            }, 200
+        finally:
+            c.stop()
 
 
 class Handler(BaseHTTPRequestHandler):
