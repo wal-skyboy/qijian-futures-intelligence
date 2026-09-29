@@ -808,6 +808,41 @@ export function buildStrategies(calibration = [], news = []) {
   });
 }
 
+/** Build transparent cross-market observations from authorized live quotes. */
+export function buildMarketAnalysis(items = []) {
+  const quotes = items.filter((item) => item && Number.isFinite(item.price));
+  const perContract = quotes.map((item) => {
+    const open = Number.isFinite(item.open) && item.open > 0 ? item.open : null;
+    const high = Number.isFinite(item.high) ? item.high : null;
+    const low = Number.isFinite(item.low) ? item.low : null;
+    const move = open ? ((item.price - open) / open) * 100 : null;
+    const range = open && high !== null && low !== null ? ((high - low) / open) * 100 : null;
+    const direction = move === null ? '未知' : move > 0.15 ? '偏多' : move < -0.15 ? '偏空' : '震荡';
+    const riskFlags = [];
+    if (item.age_seconds !== null && item.age_seconds > 120) riskFlags.push('数据偏旧');
+    if (range !== null && range >= 3) riskFlags.push('日内波动偏高');
+    if (move !== null && Math.abs(move) >= 5) riskFlags.push('相对开盘大幅波动');
+    if (!Number.isFinite(item.volume) || !Number.isFinite(item.open_interest)) riskFlags.push('成交/持仓字段缺失');
+    return { symbol: item.symbol, asset: item.asset, contract: item.contract, price: item.price, open, high, low, move_from_open_pct: move, intraday_range_pct: range, direction, volume: Number.isFinite(item.volume) ? item.volume : null, open_interest: Number.isFinite(item.open_interest) ? item.open_interest : null, risk_flags: riskFlags };
+  });
+  const up = perContract.filter((item) => item.direction === '偏多').length;
+  const down = perContract.filter((item) => item.direction === '偏空').length;
+  const flat = perContract.filter((item) => item.direction === '震荡').length;
+  const moves = perContract.map((item) => item.move_from_open_pct).filter((value) => Number.isFinite(value));
+  const averageMove = moves.length ? moves.reduce((sum, value) => sum + value, 0) / moves.length : null;
+  const leaders = [...perContract].sort((a, b) => (b.move_from_open_pct ?? -Infinity) - (a.move_from_open_pct ?? -Infinity)).slice(0, 3);
+  const laggards = [...perContract].sort((a, b) => (a.move_from_open_pct ?? Infinity) - (b.move_from_open_pct ?? Infinity)).slice(0, 3);
+  return {
+    as_of: nowIso(), scope: '同花顺 iFinD 授权实时快照',
+    coverage: { total: CONTRACTS.length, available: perContract.length, missing: CONTRACTS.filter((definition) => !perContract.some((item) => item.symbol === definition.symbol)).map((definition) => definition.symbol) },
+    breadth: { up, down, flat, average_move_from_open_pct: averageMove, regime: up > down + 1 ? '整体偏强' : down > up + 1 ? '整体偏弱' : '分化震荡' },
+    leaders: leaders.map((item) => ({ symbol: item.symbol, contract: item.contract, move_from_open_pct: item.move_from_open_pct, direction: item.direction })),
+    laggards: laggards.map((item) => ({ symbol: item.symbol, contract: item.contract, move_from_open_pct: item.move_from_open_pct, direction: item.direction })),
+    per_contract: perContract,
+    risk_summary: { flagged_contracts: perContract.filter((item) => item.risk_flags.length).map((item) => item.symbol), flag_count: perContract.reduce((sum, item) => sum + item.risk_flags.length, 0), note: '仅用于行情监控和研究分析；不构成投资建议，不自动下单。' },
+  };
+}
+
 async function safeCall(task) {
   try { return await task(); } catch (cause) { return { source: null, items: [], news: [], error: cause instanceof Error ? cause.message : 'source error' }; }
 }
@@ -875,12 +910,13 @@ export async function chinaSources(env = {}) {
   const news = dedupeNews([...(thsNews.news || []), ...(choiceNews.news || [])]);
   const calibration = buildCalibration(baselineItems, sourceItems);
   const strategies = buildStrategies(calibration, news);
+  const analysis = buildMarketAnalysis(sourceItems);
   const configuredSourceCount = dedupedCards.filter((card) => card.status !== 'not_configured' && ['同花顺 iFinD', '东方财富 Choice'].includes(card.name) && card.kind === 'market+news').length;
   const hasAnyData = sourceItems.length > 0 || baselineItems.some((item) => item.available);
   const status = sourceItems.length && configuredSourceCount >= 1 ? 'ok' : hasAnyData || configuredSourceCount >= 1 ? 'partial' : 'not_configured';
   const syncedAt = nowIso();
   const payload = {
-    status, as_of: syncedAt, items: sourceItems, calibration, strategies, news, choice_history: choiceHistory,
+    status, as_of: syncedAt, items: sourceItems, calibration, strategies, analysis, news, choice_history: choiceHistory,
     sources: [
       ...dedupedCards,
       sourceStatus({ ...SOURCE_INFO.ths_ifind, id: 'shfe_official_delayed', name: '上期所官方延时', kind: 'baseline', mode: 'official_delayed' }, baselineItems.some((item) => item.available) ? 'ok' : 'provider_error', baselineItems.some((item) => item.available) ? '官方延时基准已返回' : '官方延时基准暂不可用', { market_count: baselineItems.filter((item) => item.available).length, docs_url: 'https://www.shfe.com.cn/reports/marketdata/delayedquotes/', public_url: 'https://www.shfe.com.cn/data/tradedata/future/delaymarket/delaymarket_all.dat' }),
