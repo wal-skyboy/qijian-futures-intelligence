@@ -769,6 +769,8 @@ export default function Home(){
  const uploadOverall=uploads.length?Math.round(uploads.reduce((sum,item)=>sum+item.progress,0)/uploads.length):0;
  const candleCurrency=(asset==='黄金'||asset==='白银')&&(!candles?.currency||candles.currency==='USD')?'SPOT_USD':candles?.currency||activeCurrency;
  const candleEffectiveInterval=(candles?.effective_interval||candles?.interval||candleInterval) as CandleInterval|string;
+ const activeDomesticDefinition=domesticAssets.find(item=>item.asset===asset);
+ const activeDomesticQuote=activeDomesticDefinition?domesticQuotes.find(item=>item.symbol===activeDomesticDefinition.symbol):undefined;
  const candleLastPrice=candleView.rows.length?candleView.rows[candleView.rows.length-1].close:null;
  const candleHover=candleHoverIndex===null?null:candleView.rows[candleHoverIndex]||null;
  const candleHoverUnit=priceUnitShort(asset,candleCurrency);
@@ -899,6 +901,7 @@ export default function Home(){
       </div>
     </div>
     <div className="kline-period-note" aria-live="polite"><b>{candleIntervalLabel(candleInterval)}</b>{candleEffectiveInterval!==candleInterval&&<span>实际数据周期：{candleIntervalLabel(candleEffectiveInterval)}</span>}{candles?.interval_note&&<span>{candles.interval_note}</span>}</div>
+    {activeDomesticDefinition&&<div className="kline-domestic-strip"><span className="kline-domestic-label">国内期货延时参考</span><b>{activeDomesticDefinition.contract}</b><strong>{activeDomesticQuote?.price===null||activeDomesticQuote?.price===undefined?'—':formatPrice(activeDomesticQuote.price)}</strong><em className={typeof activeDomesticQuote?.change_pct==='number'&&activeDomesticQuote.change_pct<0?'negative':'positive'}>{typeof activeDomesticQuote?.change_pct==='number'?`${activeDomesticQuote.change_pct>=0?'+':''}${activeDomesticQuote.change_pct.toFixed(2)}%`:'—'}</em><small>{activeDomesticQuote?.as_of?`北京时间 ${formatBeijingDateTime(activeDomesticQuote.as_of)}`:'等待上期所延时同步'} · 不等同国际现货 K 线</small></div>}
     <div className={`kline-hover-card ${candleHover?'active':''}`} aria-live="polite">
       <div className="kline-hover-card-head"><span>光标数据</span><b>{candleHoverDate}</b><small>{candleHover?`${candleIntervalLabel(candleEffectiveInterval)} · ${candleHoverUnit}`:'将鼠标移到 K 线或点击蜡烛查看'}</small></div>
       <div className="kline-hover-values"><span>开 <b>{formatPrice(candleHover?.open)}</b></span><span>高 <b>{formatPrice(candleHover?.high)}</b></span><span>低 <b>{formatPrice(candleHover?.low)}</b></span><span>收 <b>{formatPrice(candleHover?.close)}</b></span><span>涨跌 <b className={typeof candleHoverDelta==='number'&&candleHoverDelta<0?'negative':typeof candleHoverDelta==='number'&&candleHoverDelta>0?'positive':''}>{candleHoverChange}</b></span><span>成交量 <b>{formatPrice(candleHover?.volume)}</b></span></div>
