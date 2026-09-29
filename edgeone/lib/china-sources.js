@@ -613,7 +613,11 @@ async function fetchThsMarket(env) {
   const endpoint = envValue(env, [info.urlKey]) || THS_API_URL;
   if (!/^https:\/\//i.test(endpoint)) return { source: sourceStatus(info, 'provider_error', 'iFinD API 地址必须使用 HTTPS'), items: [], news: [] };
   const codes = configuredCodes(env, 'THS_CONTRACT_CODES');
-  const codeList = CONTRACTS.map((item) => codes[item.symbol] || item.ths);
+  // Keep the first production probe deliberately small: these are the three
+  // futures requested by the user and avoid a single unsupported instrument
+  // making the whole iFinD batch return -4001 (no data).
+  const probeContracts = CONTRACTS.filter((item) => ['au', 'ag', 'sn'].includes(item.symbol));
+  const codeList = probeContracts.map((item) => codes[item.symbol] || item.ths);
   const body = {
     codes: codeList.join(','),
     indicators: envValue(env, [info.indicatorsKey]) || THS_DEFAULT_INDICATORS,
