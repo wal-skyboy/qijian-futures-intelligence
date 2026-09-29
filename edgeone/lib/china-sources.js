@@ -6,8 +6,11 @@ const CACHE_TTL_MS = 30_000;
 // authorised feed or exchange site is unavailable. Provider results are
 // labelled individually, so a short timeout is safer than stale data or a
 // request that appears to hang in the dashboard.
-const DEFAULT_TIMEOUT_MS = 1600;
-const MAX_TIMEOUT_MS = 2500;
+// The iFinD token exchange can take roughly 2 seconds from mainland edge
+// regions. Keep the aggregate endpoint bounded, but leave enough headroom for
+// the official refresh-token round trip and the subsequent quote request.
+const DEFAULT_TIMEOUT_MS = 5000;
+const MAX_TIMEOUT_MS = 8000;
 const THS_API_URL = 'https://quantapi.51ifind.com/api/v1/real_time_quotation';
 const THS_TOKEN_URL = 'https://quantapi.51ifind.com/api/v1/get_access_token';
 const THS_DEFAULT_INDICATORS = 'latest,changeRatio,open,high,low,volume';
