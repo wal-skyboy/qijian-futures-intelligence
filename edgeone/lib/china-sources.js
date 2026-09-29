@@ -26,11 +26,11 @@ const EASTMONEY_DOCS_URL = 'https://quantapi.eastmoney.com/';
 const EASTMONEY_PUBLIC_URL = 'https://futures.eastmoney.com/';
 
 const CONTRACTS = [
-  { symbol: 'au', asset: '黄金', name: '沪金', contract: 'AU主连', ths: 'AU.SHF', choice: 'AU0.SHF', aliases: ['au', 'au.shf', '沪金', '黄金', 'gold'] },
-  { symbol: 'ag', asset: '白银', name: '沪银', contract: 'AG主连', ths: 'AG.SHF', choice: 'AG0.SHF', aliases: ['ag', 'ag.shf', '沪银', '白银', 'silver'] },
-  { symbol: 'cu', asset: '铜', name: '沪铜', contract: 'CU主连', ths: 'CU.SHF', choice: 'CU0.SHF', aliases: ['cu', 'cu.shf', '沪铜', '铜', 'copper'] },
-  { symbol: 'sn', asset: '锡', name: '沪锡', contract: 'SN主连', ths: 'SN.SHF', choice: 'SN0.SHF', aliases: ['sn', 'sn.shf', '沪锡', '锡', 'tin'] },
-  { symbol: 'sc', asset: '原油', name: '原油', contract: 'SC主连', ths: 'SC.INE', choice: 'SC0.INE', aliases: ['sc', 'sc.ine', '原油', '上海原油', 'crude', 'oil'] },
+  { symbol: 'au', asset: '黄金', name: '沪金', contract: 'AU主连', ths: 'AU00.SHF', choice: 'AU0.SHF', aliases: ['au', 'au.shf', '沪金', '黄金', 'gold'] },
+  { symbol: 'ag', asset: '白银', name: '沪银', contract: 'AG主连', ths: 'AG00.SHF', choice: 'AG0.SHF', aliases: ['ag', 'ag.shf', '沪银', '白银', 'silver'] },
+  { symbol: 'cu', asset: '铜', name: '沪铜', contract: 'CU主连', ths: 'CU00.SHF', choice: 'CU0.SHF', aliases: ['cu', 'cu.shf', '沪铜', '铜', 'copper'] },
+  { symbol: 'sn', asset: '锡', name: '沪锡', contract: 'SN主连', ths: 'SN00.SHF', choice: 'SN0.SHF', aliases: ['sn', 'sn.shf', '沪锡', '锡', 'tin'] },
+  { symbol: 'sc', asset: '原油', name: '原油', contract: 'SC主连', ths: 'SC00.INE', choice: 'SC0.INE', aliases: ['sc', 'sc.ine', '原油', '上海原油', 'crude', 'oil'] },
 ];
 
 const SOURCE_INFO = {
