@@ -579,7 +579,10 @@ async function resolveThsAccessToken(env) {
   }
   let response;
   try {
-    response = await fetchWithTimeout(tokenUrl, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', refresh_token: refreshToken } }, providerTimeout(env));
+    // iFinD's token endpoint requires a non-empty HTTP request body. Without
+    // it some gateways reject the request before validating refresh_token with
+    // a misleading "No Content Length" response.
+    response = await fetchWithTimeout(tokenUrl, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', refresh_token: refreshToken }, body: '{}' }, providerTimeout(env));
   } catch (cause) {
     throw new ThsProviderError(thsErrorDetails(null, cause instanceof Error ? cause.message : 'iFinD token exchange failed'));
   }
