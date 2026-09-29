@@ -15,7 +15,7 @@ const THS_API_URL = 'https://quantapi.51ifind.com/api/v1/real_time_quotation';
 const THS_TOKEN_URL = 'https://quantapi.51ifind.com/api/v1/get_access_token';
 // Keep the default payload to the documented iFinD HTTP example. Optional
 // indicators can still be supplied through THS_IFIND_INDICATORS.
-const THS_DEFAULT_INDICATORS = 'open;high;low;latest';
+const THS_DEFAULT_INDICATORS = 'open,high,low,latest';
 // iFinD documents access tokens as valid for seven days. Refresh a little
 // earlier so a long-running worker never sends a token that expires during a
 // request; the refresh token itself is never returned or logged.
