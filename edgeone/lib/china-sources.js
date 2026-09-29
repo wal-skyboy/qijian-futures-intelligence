@@ -617,7 +617,7 @@ async function fetchThsMarket(env) {
   // futures requested by the user and avoid a single unsupported instrument
   // making the whole iFinD batch return -4001 (no data).
   const probeContracts = CONTRACTS.filter((item) => ['au', 'ag', 'sn'].includes(item.symbol));
-  const codeList = probeContracts.map((item) => codes[item.symbol] || item.ths);
+  const codeList = probeContracts.map((item) => item.ths);
   const body = {
     codes: codeList.join(','),
     indicators: envValue(env, [info.indicatorsKey]) || THS_DEFAULT_INDICATORS,
