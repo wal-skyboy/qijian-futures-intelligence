@@ -9,8 +9,8 @@ const CACHE_TTL_MS = 30_000;
 // The iFinD token exchange can take roughly 2 seconds from mainland edge
 // regions. Keep the aggregate endpoint bounded, but leave enough headroom for
 // the official refresh-token round trip and the subsequent quote request.
-const DEFAULT_TIMEOUT_MS = 5000;
-const MAX_TIMEOUT_MS = 8000;
+const DEFAULT_TIMEOUT_MS = 10000;
+const MAX_TIMEOUT_MS = 10000;
 const THS_API_URL = 'https://quantapi.51ifind.com/api/v1/real_time_quotation';
 const THS_TOKEN_URL = 'https://quantapi.51ifind.com/api/v1/get_access_token';
 const THS_DEFAULT_INDICATORS = 'latest,changeRatio,open,high,low,volume';
