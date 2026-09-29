@@ -17,7 +17,7 @@ const THS_API_URL = 'https://quantapi.51ifind.com/api/v1/real_time_quotation';
 const THS_TOKEN_URL = 'https://quantapi.51ifind.com/api/v1/update_access_token';
 // Keep the default payload to the documented iFinD HTTP example. Optional
 // indicators can still be supplied through THS_IFIND_INDICATORS.
-const THS_DEFAULT_INDICATORS = 'open,high,low,latest,latest_price';
+const THS_DEFAULT_INDICATORS = 'open,high,low,latest,latest_price,volume,changeRatio,openInterest';
 // iFinD documents access tokens as valid for seven days. Refresh a little
 // earlier so a long-running worker never sends a token that expires during a
 // request; the refresh token itself is never returned or logged.
@@ -615,11 +615,7 @@ async function fetchThsMarket(env) {
   const endpoint = envValue(env, [info.urlKey]) || THS_API_URL;
   if (!/^https:\/\//i.test(endpoint)) return { source: sourceStatus(info, 'provider_error', 'iFinD API 地址必须使用 HTTPS'), items: [], news: [] };
   const codes = configuredCodes(env, 'THS_CONTRACT_CODES');
-  // Keep the first production probe deliberately small: these are the three
-  // futures requested by the user and avoid a single unsupported instrument
-  // making the whole iFinD batch return -4001 (no data).
-  const probeContracts = CONTRACTS.filter((item) => ['au', 'ag', 'sn'].includes(item.symbol));
-  const codeList = probeContracts.map((item) => item.ths);
+  const codeList = CONTRACTS.map((item) => item.ths);
   const body = {
     codes: codeList.join(','),
     indicators: envValue(env, [info.indicatorsKey]) || THS_DEFAULT_INDICATORS,
