@@ -12,7 +12,9 @@ const CACHE_TTL_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 10000;
 const MAX_TIMEOUT_MS = 10000;
 const THS_API_URL = 'https://quantapi.51ifind.com/api/v1/real_time_quotation';
-const THS_TOKEN_URL = 'https://quantapi.51ifind.com/api/v1/get_access_token';
+// get_access_token may return a cached access token that has already expired
+// at the provider. update_access_token forces iFinD to mint a fresh token.
+const THS_TOKEN_URL = 'https://quantapi.51ifind.com/api/v1/update_access_token';
 // Keep the default payload to the documented iFinD HTTP example. Optional
 // indicators can still be supplied through THS_IFIND_INDICATORS.
 const THS_DEFAULT_INDICATORS = 'open,high,low,latest';
